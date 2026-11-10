@@ -23,3 +23,4 @@ test("Prompt Coach - rates detailed test-grounded prompts as EXCELLENT", () => {
   assert.equal(result.rating, "EXCELLENT");
   assert.ok(result.score >= 80);
 });
+

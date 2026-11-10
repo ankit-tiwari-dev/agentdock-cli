@@ -49,3 +49,4 @@ test("Backtracer - parses JSONL transcript and reconstructs turns and costs", ()
   assert.deepEqual(session.turns[0].toolsUsed, ["Write"]);
   assert.deepEqual(session.turns[0].filesModified, ["src/login.ts"]);
 });
+

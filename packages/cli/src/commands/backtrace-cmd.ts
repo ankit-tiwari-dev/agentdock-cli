@@ -56,3 +56,4 @@ function formatBacktraceSession(session: ReturnType<typeof parseClaudeTranscript
 
   return lines.join("\n");
 }
+

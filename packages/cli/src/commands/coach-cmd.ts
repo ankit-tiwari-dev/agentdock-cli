@@ -38,3 +38,4 @@ export function handleCoachCommand(promptArgs: string[]): string {
 
   return lines.join("\n");
 }
+

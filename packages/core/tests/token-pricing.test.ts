@@ -42,3 +42,4 @@ test("Token Pricing - formatCostUsd formats zero and tiny costs properly", () =>
   assert.equal(formatCostUsd(0.0034), "$0.0034");
   assert.equal(formatCostUsd(1.2345), "$1.23");
 });
+

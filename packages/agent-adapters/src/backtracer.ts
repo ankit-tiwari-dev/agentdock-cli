@@ -162,3 +162,4 @@ export function findLocalClaudeTranscripts(customDir?: string): string[] {
   }
   return found;
 }
+

@@ -23,3 +23,4 @@ export function handleCommitCommand(subjectArgs: string[]): string {
     return `Failed to create agent commit: ${msg}`;
   }
 }
+
