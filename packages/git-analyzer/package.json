@@ -1,0 +1,18 @@
+{
+  "name": "@ctrlplane/git-analyzer",
+  "version": "0.1.0",
+  "description": "AST Git diff parser, file classifier, and Anti-Test-Gaming Guard",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ctrlplane/core": "0.1.0"
+  },
+  "scripts": {
+    "test": "node --test tests/**/*.test.ts"
+  }
+}
+

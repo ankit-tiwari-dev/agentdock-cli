@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+
+# Control Plane runtime files
+.ctrlplane/*.db
+.ctrlplane/*.db-wal
+.ctrlplane/*.db-shm
+.ctrlplane/daemon.lock
+.ctrlplane/blobs/
+tmp-*
+tmp/
+
+# Environment files
+.env
+.env.*
+!.env.example
+

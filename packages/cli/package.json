@@ -1,0 +1,29 @@
+{
+  "name": "@ctrlplane/cli",
+  "version": "0.1.0",
+  "description": "Developer CLI and hook entrypoint for AI Development Control Plane",
+  "type": "module",
+  "bin": {
+    "ctrlplane": "./src/bin.ts"
+  },
+  "main": "./src/cli.ts",
+  "types": "./src/cli.ts",
+  "exports": {
+    ".": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@ctrlplane/core": "0.1.0",
+    "@ctrlplane/storage": "0.1.0",
+    "@ctrlplane/git-analyzer": "0.1.0",
+    "@ctrlplane/policy-engine": "0.1.0",
+    "@ctrlplane/daemon": "0.1.0",
+    "@ctrlplane/agent-adapters": "0.1.0",
+    "@ctrlplane/intent": "0.1.0",
+    "@ctrlplane/verifier": "0.1.0",
+    "@ctrlplane/explanation": "0.1.0"
+  },
+  "scripts": {
+    "test": "node --test tests/**/*.test.ts"
+  }
+}
+
