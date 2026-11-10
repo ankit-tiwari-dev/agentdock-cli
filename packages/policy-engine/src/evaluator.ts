@@ -117,16 +117,17 @@ export class PolicyEngine {
   private extractCommand(input?: Record<string, unknown> | string): string | undefined {
     if (!input) return undefined;
     if (typeof input === "string") return input;
-    if (typeof input.command === "string") return input.command;
-    if (typeof input.cmd === "string") return input.cmd;
+    for (const key of ["command", "cmd", "CommandLine", "script", "code"]) {
+      if (typeof input[key] === "string") return input[key] as string;
+    }
     return undefined;
   }
 
   private extractFilePath(input?: Record<string, unknown> | string): string | undefined {
     if (!input || typeof input !== "object") return undefined;
-    if (typeof input.filePath === "string") return input.filePath;
-    if (typeof input.path === "string") return input.path;
-    if (typeof input.file === "string") return input.file;
+    for (const key of ["filePath", "path", "Path", "file_path", "target_file", "file"]) {
+      if (typeof input[key] === "string") return input[key] as string;
+    }
     return undefined;
   }
 

@@ -22,6 +22,10 @@ export interface AuditEvent {
   policyVerdict?: PolicyAction;
   policyReason?: string;
   executionDurationMs?: number;
+  modelName?: string;
+  tokensInput?: number;
+  tokensOutput?: number;
+  estimatedCostUsd?: number;
   createdAt: number;
 }
 
@@ -46,6 +50,10 @@ export function createAuditEvent(params: {
   policyVerdict?: PolicyAction;
   policyReason?: string;
   executionDurationMs?: number;
+  modelName?: string;
+  tokensInput?: number;
+  tokensOutput?: number;
+  estimatedCostUsd?: number;
 }): AuditEvent {
   const now = Date.now();
   return {
@@ -59,6 +67,10 @@ export function createAuditEvent(params: {
     policyVerdict: params.policyVerdict,
     policyReason: params.policyReason,
     executionDurationMs: params.executionDurationMs,
+    modelName: params.modelName,
+    tokensInput: params.tokensInput,
+    tokensOutput: params.tokensOutput,
+    estimatedCostUsd: params.estimatedCostUsd,
     createdAt: now,
   };
 }

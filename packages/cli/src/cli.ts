@@ -5,6 +5,10 @@ import { handleVerifyCommand } from "./commands/verify-cmd.ts";
 import { handleExplainCommand } from "./commands/explain-cmd.ts";
 import { handleAuditCommand } from "./commands/audit-cmd.ts";
 import { handleHookCommand } from "./commands/hook-cmd.ts";
+import { handleCoachCommand } from "./commands/coach-cmd.ts";
+import { handleBacktraceCommand } from "./commands/backtrace-cmd.ts";
+import { handleCommitCommand } from "./commands/commit-cmd.ts";
+import { calculateTurnCost } from "../../core/src/token-pricing.ts";
 
 export async function runCli(args: string[]): Promise<number> {
   const command = args[0] || "help";
@@ -58,6 +62,33 @@ export async function runCli(args: string[]): Promise<number> {
       return 0;
     }
 
+    case "coach": {
+      const output = handleCoachCommand(subArgs);
+      console.log(output);
+      return 0;
+    }
+
+    case "backtrace": {
+      const output = handleBacktraceCommand(subArgs[0]);
+      console.log(output);
+      return 0;
+    }
+
+    case "commit": {
+      const output = handleCommitCommand(subArgs);
+      console.log(output);
+      return 0;
+    }
+
+    case "cost": {
+      const model = subArgs[0] || "claude-3-5-sonnet";
+      const input = parseInt(subArgs[1] || "1000", 10);
+      const output = parseInt(subArgs[2] || "500", 10);
+      const breakdown = calculateTurnCost({ modelName: model, inputTokens: input, outputTokens: output });
+      console.log(`Estimated Cost (${breakdown.model}): ${breakdown.formattedCost} (${breakdown.totalTokens} tokens)`);
+      return 0;
+    }
+
     case "hook": {
       const exitCode = await handleHookCommand(subArgs[0] || "PreToolUse");
       return exitCode;
@@ -71,7 +102,7 @@ AI Development Control Plane (@ctrlplane) v0.1.0
 USAGE:
   ctrlplane <command> [options]
 
-COMMANDS:
+SUPERVISOR COMMANDS:
   init                     Initialize .ctrlplane templates and inject agent hooks
   start                    Start supervisor daemon in background
   stop                     Stop running supervisor daemon
@@ -80,6 +111,10 @@ COMMANDS:
   verify                   Run two-tier verification against active spec
   explain                  Analyze diff blast radius, dependencies, and risks
   audit <list|show>        Query persistent event audit trail
+  coach "<prompt>"         Analyze prompt quality and get coaching suggestions
+  backtrace [transcript]   Reconstruct past agent sessions, turns, and token spend
+  commit "<subject>"       Create structured Git commit with agent trailers
+  cost <model> <in> <out>  Calculate exact token dollar spend for a model turn
   hook <eventName>         Internal hook shim invoked by agent harnesses
 `);
       return 0;

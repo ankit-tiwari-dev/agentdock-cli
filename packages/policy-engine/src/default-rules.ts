@@ -1,7 +1,26 @@
 import type { PolicyRule } from "../../core/src/index.ts";
 
 export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
+  // 0. Agent Self-Tamper Guard (from failproofai)
+  {
+    id: "RULE-BLOCK-AGENT-SELF-TAMPER",
+    name: "Prevent Agent Self-Tampering",
+    description: "Blocks AI agents from modifying their own hook configurations or disabling supervision.",
+    event: "PreToolUse",
+    targetTools: ["*"],
+    filePatterns: [
+      ".claude/settings*.json",
+      ".codex/hooks.json",
+      ".cursor/hooks.json",
+      ".opencode/opencode.json",
+      "**/.gemini/config/hooks.json",
+    ],
+    action: "DENY",
+    message: "Security Violation: Agents cannot edit or disable their own supervision hooks.",
+  },
+
   // 1. Control Plane Invariant Protection
+
   {
     id: "RULE-BLOCK-CTRLPLANE-MUTATION",
     name: "Protect Control Plane Files",

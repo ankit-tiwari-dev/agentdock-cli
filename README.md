@@ -2,13 +2,13 @@
 
 > **The local-first supervision, verification, and auditability control plane for AI coding agents.**
 
-[![Tests](https://img.shields.io/badge/tests-29%2F29%20passing-emerald)](https://github.com/ankit-tiwari-dev/agentdock-cli)
+[![Tests](https://img.shields.io/badge/tests-41%2F41%20passing-emerald)](https://github.com/ankit-tiwari-dev/agentdock-cli)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.0.0-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-purple)](LICENSE)
 
-**AgentDock CLI** (`ctrlplane`) is an open-source, local-first supervision layer that connects developer intent, coding agent activity (Claude Code, OpenAI Codex, OpenCode), and independent verification. 
+**AgentDock CLI** (`ctrlplane`) is an open-source, local-first supervision layer that connects developer intent, coding agent activity (Claude Code, OpenAI Codex, OpenCode, Cursor, Goose, Devin), and independent verification. 
 
-It prevents autonomous AI agents from hallucinating completion, deleting existing test suites to "fix" bugs, running destructive commands, or getting stuck in expensive token loops.
+It synthesizes the best ideas from **FailproofAI** (policy enforcement & multi-CLI normalizers), **Builderz Labs Mission Control** (token spend and model cost calculation), and **aGiTrack** (Git-backed commit trailers, transcript backtracing, and prompt coaching).
 
 ---
 
@@ -17,11 +17,13 @@ It prevents autonomous AI agents from hallucinating completion, deleting existin
 ```mermaid
 flowchart TD
     Dev["Developer (Intent & Sign-off)"] -->|Defines Criteria| Spec[".ctrlplane/spec.md"]
+    Coach["Prompt Coach (agitrack)"] -->|Refines Prompts| Dev
     
     subgraph Execution ["Supervised Execution Loop"]
-        Agent["Coding Agent (Claude Code / Codex / OpenCode)"] -->|PreToolUse Hook| Shim["ctrlplane-hook (<15ms IPC)"]
-        Shim --> Daemon["ctrlplane-daemon (Named Pipe / UNIX Socket)"]
-        Daemon --> Policy["Policy Engine & Loop Breaker"]
+        Agent["Coding Agent (Claude / Codex / OpenCode / Cursor)"] -->|PreToolUse Hook| Shim["ctrlplane-hook (<15ms IPC)"]
+        Shim --> Normalizer["Multi-CLI Normalizer (failproofai)"]
+        Normalizer --> Daemon["ctrlplane-daemon (Named Pipe / UNIX Socket)"]
+        Daemon --> Policy["Policy Engine, Self-Tamper Guard & Loop Breaker"]
         
         Policy -->|Destructive Command or Test Alteration| Block["Exit Code 2 (BLOCK & Invalidate)"]
         Block --> Agent
@@ -29,12 +31,14 @@ flowchart TD
         Allow --> Agent
     end
     
+    Agent -->|Completed Turn| GitTracker["Agent Commit Tracker (Git Trailers)"]
     Agent -->|Completion Signal| Verifier["Two-Tier Verification Engine"]
     
-    subgraph Verification ["Independent Verification"]
+    subgraph Verification ["Independent Verification & Audit"]
         Verifier --> T1["Tier 1: Compilers, Test Suites & Test-Tamper Integrity"]
         Verifier --> T2["Tier 2: Evidence-Backed Semantic Criteria Audit"]
         T1 & T2 --> Report["Evidence Report (Line-level citations)"]
+        GitTracker --> Spend["Token Spend & Cost Calculator (mission-control)"]
     end
     
     Report --> Dev
@@ -45,9 +49,15 @@ flowchart TD
 ## Key Capabilities
 
 * **Anti-Test-Gaming Guard:** Agents frequently "fix" broken code by deleting or weakening existing test assertions. AgentDock intercepts tool calls targeting test files and blocks alterations to existing assertions with `Exit Code 2`.
+* **Agent Self-Tamper Guard (from FailproofAI):** Strictly blocks agents from editing their own hooks (`.claude/settings*.json`, `.codex/hooks.json`, `.cursor/hooks.json`) to disable supervision.
+* **Multi-CLI Tool Canonicalizer:** Unifies diverse tool naming conventions (`run_command`, `Bash`, `str_replace_editor`, `write_file`) into deterministic policy verbs.
+* **Token Spend & Cost Calculator (from Builderz Labs Mission Control):** Real-time dollar cost and token calculation across Claude 3.5 Sonnet, Gemini 1.5 Pro/Flash, GPT-4o, and local Ollama.
+* **Git-Backed Commit Tracking & Trailers (from aGiTrack):** Stages and creates Git commits per turn carrying structured `# AgentDock Metadata` trailers and masked local paths (`[PATH]`).
+* **Prompt Coach & Socratic Insights:** Analyzes prompt quality before sending to worker agents, flagging ambiguity, lack of test grounding, and loop patterns.
+* **Historical Transcript Backtracer:** Reconstructs prior turns, files touched, tokens, and dollar costs from Claude Code `~/.claude/projects/` transcripts.
 * **Destructive Command Guard:** Blocks `rm -rf`, `git push --force`, `git reset --hard`, recursive deletions, and private credential reads (`.env`, `.pem`, `~/.ssh`).
 * **Loop Breaker (Circuit Breaker):** Automatically detects when an agent fails the same test or command 3 consecutive times, halting the agent to prevent runaway token spend.
-* **Two-Tier Verification:** Never trusts an agent's self-reported "Done" signal.
+* **Two-Tier Verification:** Never trusts an agent's self-reported "Done" signal. Deterministically verifies code with compiler passes and line-level semantic audits.
   * **Tier 1 (Deterministic):** Compilers, typecheckers, test runners, and AST test-tamper analyzers.
   * **Tier 2 (Semantic):** Maps acceptance criteria against code diffs and requires exact file, start line, and end line citations.
 * **Sub-15ms Latency Budget:** Lightweight hook shim connects to the daemon over Windows Named Pipes or UNIX domain sockets, acknowledging calls in $< 10\text{ms}$.
@@ -107,9 +117,22 @@ node packages/cli/src/bin.ts status
 node packages/cli/src/bin.ts verify
 ```
 
-### 5. Inspect Code Blast Radius & Delta Explanation
+### 5. Prompt Coaching & Socratic Guidance
 ```bash
-node packages/cli/src/bin.ts explain
+# Analyze prompt quality and receive actionable suggestions
+node packages/cli/src/bin.ts coach "fix the login error"
+```
+
+### 6. Git-Backed Commit Tracking & Spend Calculation
+```bash
+# Create a structured turn commit with AgentDock metadata trailers
+node packages/cli/src/bin.ts commit "Implement authentication middleware"
+
+# Calculate exact dollar spend for model input/output tokens
+node packages/cli/src/bin.ts cost claude-3-5-sonnet 15000 2500
+
+# Reconstruct historical sessions from local Claude transcripts
+node packages/cli/src/bin.ts backtrace
 ```
 
 ---
@@ -124,6 +147,9 @@ node --test packages/*/tests/**/*.test.ts
 
 Output:
 ```
+✔ 41 pass, 0 fail (100% deterministic coverage)
+```
+```
 ✔ 29/29 tests passing (Duration: ~3.1s)
 ```
 
@@ -132,3 +158,4 @@ Output:
 ## License
 
 MIT © [Ankit Tiwari](https://github.com/ankit-tiwari-dev)
+
