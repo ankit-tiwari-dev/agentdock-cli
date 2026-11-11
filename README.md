@@ -51,6 +51,11 @@ node packages/cli/src/bin.ts status
 
 `init` creates `.ctrlplane/spec.md` and adds the hooks to the agent's settings without touching your other hooks.
 
+When the AgentDock platform backend is running locally, installed hooks also send redacted tool,
+decision, and session events to `http://127.0.0.1:45820` for the live dashboard. This is best-effort:
+the hook verdict does not depend on dashboard availability. Set `CTRLPLANE_DASHBOARD_URL=off` to
+disable publishing, or set it to another local HTTP `/api/events/broadcast` URL.
+
 ### Everyday commands
 
 ```bash

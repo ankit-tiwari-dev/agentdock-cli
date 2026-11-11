@@ -2,6 +2,7 @@ import { DAEMON_UNAVAILABLE, dispatchHook, isCiMode } from "../../../agent-adapt
 import { formatHookOutput, type HookProcessOutput } from "../../../agent-adapters/src/hook-output.ts";
 import { normalizeHookPayload, type AgentHookPayload, type HookVerdictResponse } from "../../../core/src/index.ts";
 import { findProjectRoot } from "../../../daemon/src/lock.ts";
+import { publishDashboardEvent } from "./dashboard-publisher.ts";
 
 export interface HookRunOptions {
   agent?: string;
@@ -67,6 +68,8 @@ export async function runHook(
       stderr: `[ctrlplane hook error] ${failClosed ? "CI mode fails close: " : ""}${String(err)}`,
     };
   }
+
+  await publishDashboardEvent(payload, verdict, projectRoot);
 
   let extraContext: string | undefined;
   if (
