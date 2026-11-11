@@ -23,7 +23,8 @@ export const AGENT_HOOK_CONFIG_FILES = [
   ".gemini/settings.json",
 ];
 
-const OFF_SWITCH_VERBS = String.raw`(?:stop|pause|uninstall|policies\s+(?:disable|off|observe|set))\b`;
+// Memory is injected into every future session, so only the developer may write it.
+const OFF_SWITCH_VERBS = String.raw`(?:stop|pause|uninstall|policies\s+(?:disable|off|observe|set)|memory\s+(?:add|rm))\b`;
 const SUPERVISOR_OFF_SWITCH = new RegExp(String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${OFF_SWITCH_VERBS}|\bbin\.ts["']?\s+${OFF_SWITCH_VERBS}`, "i");
 
 export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
@@ -41,7 +42,7 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
     check: (ctx) => {
       for (const sub of ctx.subCommands) {
         if (SUPERVISOR_OFF_SWITCH.test(sub)) {
-          return { message: `Security Violation: Agents cannot stop or pause their own supervisor (Triggered by command: '${sub}')` };
+          return { message: `Security Violation: Agents cannot stop, pause or reconfigure their own supervisor or write its memory (Triggered by command: '${sub}')` };
         }
         if (writesUnder(sub, AGENT_HOOK_CONFIG_FILES)) {
           return { message: `Security Violation: Agents cannot edit or disable their own supervision hooks. (Triggered by command: '${sub}')` };

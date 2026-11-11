@@ -22,6 +22,7 @@ import {
   type ProjectEngine,
   type RuleOverride,
 } from "../../policy-engine/src/index.ts";
+import { ContextRecorder, type RecorderOptions } from "../../context/src/recorder.ts";
 import { IPCServer, type IPCEndpoint } from "./ipc-server.ts";
 import { findProjectRoot } from "./lock.ts";
 
@@ -41,6 +42,8 @@ export interface DaemonConfig {
   isPaused?: (sessionId: string) => boolean;
   /** Project rules and config; reloaded when a config file changes. */
   projectEngine?: ProjectEngine;
+  /** Context recording options (tests inject a fake summary runner here). */
+  recorder?: RecorderOptions;
 }
 
 export interface DaemonEventNotice {
@@ -85,6 +88,8 @@ export class SupervisorDaemon {
   private shutdownRequested: (() => void) | null = null;
   private projectEngine: ProjectEngine | null;
   private reloading = false;
+  private recorderOptions: RecorderOptions;
+  private recorder: ContextRecorder;
 
   constructor(config: DaemonConfig) {
     this.config = config;
@@ -95,6 +100,8 @@ export class SupervisorDaemon {
     this.storage = new StorageEngine(this.dbPath);
     this.projectEngine = config.projectEngine ?? null;
     this.policyEngine = this.projectEngine?.engine ?? new PolicyEngine(undefined, { overrides: config.overrides });
+    this.recorderOptions = { aiSummaries: this.projectEngine?.config.context.aiSummaries ?? false, ...config.recorder };
+    this.recorder = new ContextRecorder(this.storage, this.projectRoot, this.recorderOptions);
 
     this.lockFilePath = join(this.projectRoot, ".ctrlplane", "daemon.lock");
 
@@ -111,6 +118,7 @@ export class SupervisorDaemon {
       .then((next) => {
         this.projectEngine = next;
         this.policyEngine = next.engine;
+        this.recorderOptions.aiSummaries = next.config.context.aiSummaries;
       })
       .catch((err) => {
         console.error(`[ctrlplane daemon] config reload failed, keeping previous rules: ${String(err)}`);
@@ -119,6 +127,10 @@ export class SupervisorDaemon {
       .finally(() => {
         this.reloading = false;
       });
+  }
+
+  public getRecorder(): ContextRecorder {
+    return this.recorder;
   }
 
   public getStorage(): StorageEngine {
@@ -304,6 +316,12 @@ export class SupervisorDaemon {
       });
     } catch {
       // Storage problems must never block the agent loop.
+    }
+
+    try {
+      this.recorder.record(payload, sessionId);
+    } catch (err) {
+      console.error(`[ctrlplane daemon] context recording failed: ${String(err)}`);
     }
 
     try {

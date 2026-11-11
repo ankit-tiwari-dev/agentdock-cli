@@ -11,8 +11,14 @@ export interface HookRunOptions {
   contextProvider?: (payload: AgentHookPayload, projectRoot: string) => Promise<string | undefined>;
 }
 
+// Tool-call hooks stay on the fast path: only these events load the context store.
+const CONTEXT_EVENTS = new Set(["UserPromptSubmit", "SessionStart", "PreCompact", "Stop", "SessionEnd"]);
+
 /** Pure core of the hook shim: stdin text in, process output out. */
 export async function runHook(eventName: string | undefined, stdinText: string, options: HookRunOptions = {}): Promise<HookProcessOutput> {
+  // The summariser's own `claude -p` child must never be supervised by, or recorded into, the session it summarises.
+  if (process.env.CTRLPLANE_NESTED === "1") return { exitCode: 0 };
+
   let raw: Record<string, unknown> = {};
   if (stdinText.trim()) {
     try {
@@ -32,6 +38,14 @@ export async function runHook(eventName: string | undefined, stdinText: string, 
   // No daemon: still enforce the rules in-process rather than letting everything through.
   if (verdict.decision === "ALLOW" && verdict.matchedRuleId === DAEMON_UNAVAILABLE) {
     verdict = await evaluateLocally(payload, projectRoot);
+    if (CONTEXT_EVENTS.has(payload.hookEventName)) {
+      try {
+        const { recordWithoutDaemon } = await import("../../../context/src/hook-context.ts");
+        recordWithoutDaemon(payload, projectRoot);
+      } catch {
+        // Context is a convenience; it must never change the verdict.
+      }
+    }
   }
 
   let extraContext: string | undefined;
@@ -84,7 +98,10 @@ export async function handleHookCommand(eventName: string, args: string[] = []):
   const agent = agentFlag !== -1 ? args[agentFlag + 1] : undefined;
   const stdinPayload = await readAllStdin();
 
-  const out = await runHook(eventName, stdinPayload, { agent });
+  const out = await runHook(eventName, stdinPayload, {
+    agent,
+    contextProvider: async (payload, root) => (await import("../../../context/src/hook-context.ts")).contextForHook(payload, root),
+  });
 
   if (out.stdout) process.stdout.write(`${out.stdout}\n`);
   if (out.stderr) process.stderr.write(`${out.stderr}\n`);

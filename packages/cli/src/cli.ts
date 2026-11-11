@@ -9,6 +9,7 @@ import { handleCoachCommand } from "./commands/coach-cmd.ts";
 import { handleBacktraceCommand } from "./commands/backtrace-cmd.ts";
 import { handleCommitCommand } from "./commands/commit-cmd.ts";
 import { handlePauseCommand, handlePoliciesCommand, handleResumeCommand, type CommandResult } from "./commands/policies-cmd.ts";
+import { handleCapabilitiesCommand, handleContextCommand, handleHandoffCommand, handleMemoryCommand } from "./commands/context-cmd.ts";
 import { calculateTurnCost } from "../../core/src/token-pricing.ts";
 
 function print(res: CommandResult): number {
@@ -41,6 +42,18 @@ export async function runCli(args: string[]): Promise<number> {
 
     case "resume":
       return print(handleResumeCommand());
+
+    case "context":
+      return print(await handleContextCommand(subArgs));
+
+    case "handoff":
+      return print(handleHandoffCommand(subArgs));
+
+    case "memory":
+      return print(handleMemoryCommand(subArgs[0], subArgs.slice(1)));
+
+    case "capabilities":
+      return print(handleCapabilitiesCommand());
 
     case "start": {
       const msg = await handleStartDaemon();
@@ -144,6 +157,13 @@ POLICY COMMANDS:
   policies set <id> <param> <json>    Change a rule parameter      [--local|--user]
   policies test --command "<cmd>" [--expect deny|ask|instruct|allow]
                                       Dry-run a tool call; exits 1 if --expect fails
+
+CONTEXT COMMANDS:
+  context [--source compact]          Show the context pack a new session receives
+  handoff [--note "<text>"] | show    Save (or show) where the work stands for the next session
+  memory add "<note>" [--tags a,b] [--pin] | search "<words>" | list | rm <id>
+                                      Project notes injected into every new session
+  capabilities                        MCP servers, skills, agents, hooks and where each came from
   spec <new|approve|show>  Manage specification and criteria
   verify                   Run two-tier verification against active spec
   explain                  Analyze diff blast radius, dependencies, and risks

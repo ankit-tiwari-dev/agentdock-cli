@@ -9,7 +9,7 @@ import type {
   VerificationReport,
   CriterionFinding,
 } from "../../core/src/index.ts";
-import { redactObject } from "./redactor.ts";
+import { redactObject, redactSecrets } from "./redactor.ts";
 import { BlobStore, BLOB_THRESHOLD_BYTES } from "./blob.ts";
 
 export class StorageEngine {
@@ -124,6 +124,31 @@ export class StorageEngine {
         associated_test_file TEXT,
         rationale TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS context_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        kind TEXT NOT NULL,
+        body TEXT NOT NULL,
+        meta_json TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_context_kind_time ON context_entries(kind, created_at);
+
+      CREATE TABLE IF NOT EXISTS memory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        body TEXT NOT NULL,
+        tags TEXT NOT NULL DEFAULT '',
+        pinned INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(body, tags, content='memory', content_rowid='id', tokenize='porter unicode61');
+      CREATE TRIGGER IF NOT EXISTS memory_ai AFTER INSERT ON memory BEGIN
+        INSERT INTO memory_fts(rowid, body, tags) VALUES (new.id, new.body, new.tags);
+      END;
+      CREATE TRIGGER IF NOT EXISTS memory_ad AFTER DELETE ON memory BEGIN
+        INSERT INTO memory_fts(memory_fts, rowid, body, tags) VALUES ('delete', old.id, old.body, old.tags);
+      END;
     `);
   }
 
@@ -403,7 +428,97 @@ export class StorageEngine {
     }
   }
 
+  // --- Context (intents, summaries, handoffs, capability snapshots) ---
+
+  public addContextEntry(entry: Omit<ContextEntry, "id" | "createdAt"> & { createdAt?: number }): number {
+    const res = this.db
+      .prepare(`INSERT INTO context_entries (session_id, kind, body, meta_json, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(entry.sessionId ?? null, entry.kind, redactSecrets(entry.body).sanitized, entry.meta ? JSON.stringify(redactObject(entry.meta)) : null, entry.createdAt ?? Date.now());
+    return Number(res.lastInsertRowid);
+  }
+
+  /** Keeps a single row per (session, kind), for rolling summaries that are rewritten every turn. */
+  public replaceContextEntry(entry: Omit<ContextEntry, "id" | "createdAt"> & { sessionId: string; createdAt?: number }): number {
+    this.db.prepare(`DELETE FROM context_entries WHERE kind = ? AND session_id = ?`).run(entry.kind, entry.sessionId);
+    return this.addContextEntry(entry);
+  }
+
+  /** Newest first. */
+  public listContextEntries(kind: ContextKind, options: { sessionId?: string; limit?: number } = {}): ContextEntry[] {
+    const rows = (
+      options.sessionId
+        ? this.db.prepare(`SELECT * FROM context_entries WHERE kind = ? AND session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`).all(kind, options.sessionId, options.limit ?? 20)
+        : this.db.prepare(`SELECT * FROM context_entries WHERE kind = ? ORDER BY created_at DESC, id DESC LIMIT ?`).all(kind, options.limit ?? 20)
+    ) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      sessionId: r.session_id ? String(r.session_id) : undefined,
+      kind: String(r.kind) as ContextKind,
+      body: String(r.body),
+      meta: r.meta_json ? JSON.parse(String(r.meta_json)) : undefined,
+      createdAt: Number(r.created_at),
+    }));
+  }
+
+  // --- Project memory (full-text searchable notes) ---
+
+  public addMemory(body: string, options: { tags?: string[]; pinned?: boolean } = {}): number {
+    const res = this.db
+      .prepare(`INSERT INTO memory (body, tags, pinned, created_at) VALUES (?, ?, ?, ?)`)
+      .run(redactSecrets(body).sanitized, (options.tags ?? []).join(" "), options.pinned ? 1 : 0, Date.now());
+    return Number(res.lastInsertRowid);
+  }
+
+  public deleteMemory(id: number): boolean {
+    return Number(this.db.prepare(`DELETE FROM memory WHERE id = ?`).run(id).changes) > 0;
+  }
+
+  /** Pinned first, then newest. */
+  public listMemory(limit = 20): MemoryNote[] {
+    return (this.db.prepare(`SELECT * FROM memory ORDER BY pinned DESC, created_at DESC, id DESC LIMIT ?`).all(limit) as Record<string, unknown>[]).map(toMemoryNote);
+  }
+
+  /** Ranked full-text search. Free text is reduced to quoted words so punctuation cannot break the FTS query syntax. */
+  public searchMemory(query: string, limit = 10): MemoryNote[] {
+    const words = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
+    if (!words.length) return [];
+    const match = words.map((w) => `"${w}"`).join(" OR ");
+    const rows = this.db
+      .prepare(`SELECT m.* FROM memory_fts f JOIN memory m ON m.id = f.rowid WHERE memory_fts MATCH ? ORDER BY bm25(memory_fts), m.pinned DESC LIMIT ?`)
+      .all(match, limit) as Record<string, unknown>[];
+    return rows.map(toMemoryNote);
+  }
+
   public close(): void {
     this.db.close();
   }
+}
+
+export type ContextKind = "intent" | "summary" | "compact" | "handoff" | "capabilities";
+
+export interface ContextEntry {
+  id: number;
+  sessionId?: string;
+  kind: ContextKind;
+  body: string;
+  meta?: Record<string, unknown>;
+  createdAt: number;
+}
+
+export interface MemoryNote {
+  id: number;
+  body: string;
+  tags: string[];
+  pinned: boolean;
+  createdAt: number;
+}
+
+function toMemoryNote(r: Record<string, unknown>): MemoryNote {
+  return {
+    id: Number(r.id),
+    body: String(r.body),
+    tags: String(r.tags ?? "").split(" ").filter(Boolean),
+    pinned: Number(r.pinned) === 1,
+    createdAt: Number(r.created_at),
+  };
 }
