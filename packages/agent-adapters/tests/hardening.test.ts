@@ -1,7 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -224,7 +234,13 @@ test("OpenCode install writes a missing plugin, replaces a stale one and leaves 
     const old = new Date(2000, 0, 1);
     utimesSync(first.pluginPath, old, old);
     injectOpenCodePlugin(dir, "ctrlplane hook");
-    assert.equal(statSync(first.pluginPath).mtimeMs, old.getTime());
+    // Read the timestamp through an open handle, so the test itself has no check-then-use on the path.
+    const handle = openSync(first.pluginPath, "r");
+    try {
+      assert.equal(fstatSync(handle).mtimeMs, old.getTime());
+    } finally {
+      closeSync(handle);
+    }
 
     writeFileSync(first.pluginPath, "stale");
     injectOpenCodePlugin(dir, "ctrlplane hook");
