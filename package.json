@@ -8,12 +8,13 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "node --test --test-timeout=60000 packages/*/tests/*.test.ts",
+    "test": "node --test --test-timeout=60000 packages/*/tests/*.test.ts scripts/tests/*.test.ts",
     "ctrlplane": "node packages/cli/src/bin.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "hygiene": "node scripts/hygiene.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

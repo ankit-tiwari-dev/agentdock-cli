@@ -14,5 +14,5 @@
     "verbatimModuleSyntax": false,
     "noEmit": true
   },
-  "include": ["packages/*/src/**/*", "packages/*/tests/**/*"]
+  "include": ["packages/*/src/**/*", "packages/*/tests/**/*", "scripts/**/*"]
 }

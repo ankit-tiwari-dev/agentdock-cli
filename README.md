@@ -74,6 +74,8 @@ Run `ctrlplane help` for the full list. Until the CLI is installed globally, use
 
 ```bash
 make ci          # every gate CI runs
+make lint        # ESLint + Prettier check
+make hygiene     # repo rules
 make typecheck
 make test
 ```

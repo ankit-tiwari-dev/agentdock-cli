@@ -1,0 +1,12 @@
+# Built-in rules, plus one exception.
+[extend]
+useDefault = true
+
+[[allowlists]]
+# These tests check that redaction removes secrets, so they hold fake ones on purpose:
+# the GitHub tokens fail GitHub's checksum and the JWT is the public jwt.io sample.
+description = "Fake secrets in the redaction tests"
+paths = [
+  '''^packages/storage/tests/redactor-regressions\.test\.ts$''',
+  '''^packages/storage/tests/storage\.test\.ts$''',
+]

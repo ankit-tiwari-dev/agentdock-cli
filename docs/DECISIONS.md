@@ -42,5 +42,12 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 
 ## D-8 · Releases are GitHub Releases only
 
-- **Decision:** a `v*` tag runs every gate, then attaches the packed CLI to a GitHub Release. Nothing is published to npm or an extension marketplace.
+- **Decision:** a `v*` tag runs every CI and security gate, then attaches a source archive of the tagged tree and its `SHA256SUMS` to a GitHub Release (`.github/workflows/release.yml`). Nothing is published to npm or an extension marketplace. The tag must equal `v` + the root `package.json` version.
+- **Why a source archive:** the CLI imports the other packages by relative path, so the `cli` package alone would not run. The shipped code has no third-party runtime dependencies, so the archive plus Node is the whole install.
 - **Why:** one release channel to secure and support while the product is pre-1.0.
+
+## D-9 · Every CI check blocks, and exceptions expire
+
+- **Decision:** lint, format, typecheck, hygiene, tests on Linux, Windows and macOS with Node 22 and 24, CodeQL, dependency review, OSV and a full-history secret scan all fail the run. A known advisory or a fake test secret is excused by name in `osv-scanner.toml` or `.gitleaks.toml`, never by turning a scan off. An OSV exception has an `ignoreUntil` date.
+- **Why:** a check that only warns is ignored within a week. An exception with an end date gets looked at again; a disabled scan does not.
+- **Cost:** a new advisory in a dev tool can turn the weekly run red with no code change. That is the point: someone decides.

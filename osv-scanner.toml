@@ -1,0 +1,6 @@
+# Each exception names one advisory, says why, and expires so it cannot be forgotten.
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2027-01-31T00:00:00Z
+reason = "minimatch 10 slowdown on hostile glob patterns. Dev-only (ESLint), fed only this repo's own lint globs. The fix is minimatch 11, which ESLint does not support yet; Dependabot will offer the upgrade."

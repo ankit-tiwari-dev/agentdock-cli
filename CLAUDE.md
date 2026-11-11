@@ -5,7 +5,10 @@ The code invariants that are easy to break. The how and why live in `docs/` (ind
 ## Run everything through make
 
 - `make ci` runs every gate CI runs, in the same order. Run it before you call work done.
-- `make typecheck`, `make test`: the single gates. Never report a gate green from piped output; read its exit code.
+- `make lint`, `make typecheck`, `make hygiene`, `make test`: the single gates. Never report a gate green from piped output; read its exit code.
+- `make hygiene` (`scripts/hygiene.ts`) fails on tracked build output, CRLF in the index, unpinned workflow actions, lockfile drift, a package without tests, and names or planning references that must not appear in the repo.
+- Every `uses:` in `.github/workflows/` is pinned to a full commit SHA, with the version in a trailing comment.
+- A security-scan exception goes in `osv-scanner.toml` or `.gitleaks.toml` with a reason, and an OSV exception also gets an expiry date (`docs/DECISIONS.md` → D-9).
 
 ## Code invariants
 

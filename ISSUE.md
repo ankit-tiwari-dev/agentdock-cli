@@ -65,3 +65,9 @@ Status flow: FOUND → IN PROGRESS → FIXED. Each entry: symptoms, root cause, 
 
 - **Symptoms:** the README license badge links to `LICENSE`, which does not exist. Without a license file the code is not open source in practice.
 - **Fix (proposed):** the owner picks a license and adds `LICENSE`.
+
+## I-11 · FOUND · The verification report always says lint passed
+
+- **Symptoms:** `ctrlplane verify` prints `Lint / Static Analysis: PASS` for every project, including one with no linter.
+- **Root cause:** `packages/verifier/src/deterministic-runner.ts` never runs a lint command. `lintPassed` is a constant `true`, which `packages/verifier/src/report-generator.ts` prints.
+- **Fix (proposed):** run a configured lint command the same way as the test and typecheck commands, and print `NOT RUN` when none is configured.
