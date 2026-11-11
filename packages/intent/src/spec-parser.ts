@@ -16,7 +16,6 @@ export interface ParsedSpecResult {
  */
 export function parseSpecificationMarkdown(markdown: string): Specification {
   let title = "Untitled Feature Specification";
-  let overview = "";
   let version = 1;
   let status: SpecStatus = "draft";
   let approvedBy: string | undefined;
@@ -53,7 +52,7 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
   const lines = body.split("\n");
 
   let currentSection: "none" | "overview" | "plan" | "criteria" = "none";
-  let overviewLines: string[] = [];
+  const overviewLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -85,7 +84,7 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
     if (currentSection === "overview" && line) {
       overviewLines.push(line);
     } else if (currentSection === "plan" && line) {
-      const cleanStep = line.replace(/^(?:\d+\.|\-|\*)\s+/, "").trim();
+      const cleanStep = line.replace(/^(?:\d+\.|-|\*)\s+/, "").trim();
       if (cleanStep) plan.push(cleanStep);
     } else if (currentSection === "criteria" && line) {
       // Check for checklist pattern: - [ ] or - [x]
@@ -95,7 +94,7 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
         const rawDescription = match[2].trim();
 
         // Check for explicit ID: "AC-1: Description" or "AC-01 - Description"
-        const idMatch = rawDescription.match(/^([A-Z0-9_\-]+)\s*[:\-]\s*(.*)$/);
+        const idMatch = rawDescription.match(/^([A-Z0-9_-]+)\s*[:-]\s*(.*)$/);
         let id = `AC-${criteria.length + 1}`;
         let description = rawDescription;
 
@@ -117,7 +116,7 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
     }
   }
 
-  overview = overviewLines.join("\n").trim();
+  const overview = overviewLines.join("\n").trim();
   const hash = computeSpecHash(title, overview, plan, criteria);
 
   return {

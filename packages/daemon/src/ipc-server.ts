@@ -1,4 +1,4 @@
-import { createServer, Server, Socket } from "node:net";
+import { createServer, type Server, type Socket } from "node:net";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { unlinkSync, existsSync } from "node:fs";

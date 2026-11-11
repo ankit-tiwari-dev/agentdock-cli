@@ -49,7 +49,7 @@ function readConfigFile(path: string): PolicyConfigFile | null {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
     return parsed && typeof parsed === "object" ? (parsed as PolicyConfigFile) : null;
   } catch (err) {
-    throw new Error(`Invalid JSON in ${path}: ${(err as Error).message}`);
+    throw new Error(`Invalid JSON in ${path}: ${(err as Error).message}`, { cause: err });
   }
 }
 

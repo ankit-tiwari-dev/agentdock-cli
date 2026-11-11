@@ -12,10 +12,10 @@ export interface TestTamperAnalysis {
 
 const ASSERTION_PATTERNS = [
   /\bexpect\s*\(/i,
-  /\bassert\s*[\.(]/i,
+  /\bassert\s*[.(]/i,
   /\bit\s*\(/i,
   /\btest\s*\(/i,
-  /\bshould\s*[\.(]/i,
+  /\bshould\s*[.(]/i,
   /\bt\.Run\s*\(/i,
   /\bassertEquals\s*\(/i,
   /\bassertTrue\s*\(/i,

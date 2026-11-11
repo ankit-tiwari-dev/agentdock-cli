@@ -6,9 +6,7 @@ import type {
   Session,
   Specification,
   AuditEvent,
-  FileSnapshot,
   VerificationReport,
-  CriterionFinding,
 } from "../../core/src/index.ts";
 import { redactObject, redactSecrets } from "./redactor.ts";
 import { BlobStore, BLOB_THRESHOLD_BYTES } from "./blob.ts";
@@ -265,7 +263,7 @@ export class StorageEngine {
   public insertEvent(event: AuditEvent): void {
     // Redact sensitive credentials prior to disk writes
     const sanitizedInput = event.toolInput ? redactObject(event.toolInput) : null;
-    let sanitizedOutput = event.toolOutput ? redactObject(event.toolOutput) : null;
+    const sanitizedOutput = event.toolOutput ? redactObject(event.toolOutput) : null;
     let isBlobStored = 0;
 
     let outputJson = sanitizedOutput ? JSON.stringify(sanitizedOutput) : null;

@@ -1,7 +1,6 @@
 import type {
   AcceptanceCriterion,
   CriterionFinding,
-  VerdictState,
   CodeEvidence,
 } from "../../core/src/index.ts";
 import { parseUnifiedDiff, type FileDiff } from "../../git-analyzer/src/index.ts";

@@ -1,5 +1,5 @@
 import type { SymbolBlastRadius } from "../../core/src/index.ts";
-import { parseUnifiedDiff, type FileDiff } from "../../git-analyzer/src/index.ts";
+import { parseUnifiedDiff } from "../../git-analyzer/src/index.ts";
 
 export function computeDiffBlastRadius(rawDiff: string): SymbolBlastRadius[] {
   const fileDiffs = parseUnifiedDiff(rawDiff);

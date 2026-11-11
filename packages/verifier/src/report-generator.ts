@@ -1,4 +1,4 @@
-import type { VerificationReport, CriterionFinding } from "../../core/src/index.ts";
+import type { VerificationReport } from "../../core/src/index.ts";
 
 export function formatVerificationReportText(report: VerificationReport): string {
   const divider = "=".repeat(80);

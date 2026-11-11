@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   createSession,
   validateSession,
-  createSpecification,
   computeSpecHash,
   createAuditEvent,
 } from "../src/index.ts";

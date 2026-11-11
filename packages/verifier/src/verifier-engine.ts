@@ -3,7 +3,7 @@ import type {
   OverallStatus,
   Specification,
 } from "../../core/src/index.ts";
-import { runDeterministicChecks, type DeterministicRunOptions } from "./deterministic-runner.ts";
+import { runDeterministicChecks } from "./deterministic-runner.ts";
 import { auditCriteriaAgainstEvidence } from "./semantic-auditor.ts";
 import { formatVerificationReportText } from "./report-generator.ts";
 

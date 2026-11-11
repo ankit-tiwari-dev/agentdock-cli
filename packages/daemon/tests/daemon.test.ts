@@ -1,19 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createConnection } from "node:net";
+import { createConnection, type NetConnectOpts } from "node:net";
 import { SupervisorDaemon, type IPCEndpoint } from "../src/index.ts";
-import { createSession } from "../../core/src/index.ts";
+import { createSession, type HookVerdictResponse } from "../../core/src/index.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-function sendIPCMessage(endpoint: IPCEndpoint, payload: object): Promise<any> {
+function sendIPCMessage(endpoint: IPCEndpoint, payload: object): Promise<HookVerdictResponse> {
   return new Promise((resolve, reject) => {
     const opts = endpoint.path
       ? { path: endpoint.path }
       : { host: endpoint.host ?? "127.0.0.1", port: endpoint.port ?? 0 };
 
-    const client = createConnection(opts as any, () => {
+    const client = createConnection(opts as NetConnectOpts, () => {
       client.write(JSON.stringify(payload) + "\n");
     });
 
@@ -83,7 +83,7 @@ test("SupervisorDaemon starts, serves IPC, and enforces policy", async () => {
 
   assert.equal(dangerRes.decision, "DENY");
   assert.equal(dangerRes.exitCode, 2);
-  assert.ok(dangerRes.stderrMessage.includes("Destructive command blocked"));
+  assert.ok(dangerRes.stderrMessage?.includes("Destructive command blocked"));
 
   // Verify events persisted to storage
   const events = daemon.getStorage().listEventsForSession(session.id);

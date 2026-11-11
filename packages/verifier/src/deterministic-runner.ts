@@ -15,7 +15,7 @@ export function runDeterministicChecks(options: DeterministicRunOptions): Determ
   const logs: Record<string, string> = {};
   let testSuitePassed = true;
   let typecheckPassed = true;
-  let lintPassed = true;
+  const lintPassed = true;
   let testTamperDetected = false;
   let failedAssertionCount = 0;
 

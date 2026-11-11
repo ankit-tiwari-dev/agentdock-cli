@@ -297,8 +297,8 @@ export const EXTENDED_RULES: PolicyRule[] = [
       const cmd = ctx.command ?? "";
       const destructive =
         /\b(drop\s+(table|database|schema|index|view)|truncate\s+(table\s+)?\w)/i.test(cmd) ||
-        /\bdelete\s+from\s+[\w."`\[\]]+\s*(;|"|'|$)/im.test(cmd) ||
-        /\bupdate\s+[\w."`\[\]]+\s+set\b(?![\s\S]*\bwhere\b)/i.test(cmd) ||
+        /\bdelete\s+from\s+[\w."`[\]]+\s*(;|"|'|$)/im.test(cmd) ||
+        /\bupdate\s+[\w."`[\]]+\s+set\b(?![\s\S]*\bwhere\b)/i.test(cmd) ||
         /\.(drop|deleteMany|remove)\(\s*(\{\s*\})?\s*\)/.test(cmd) ||
         /\bflushall\b|\bflushdb\b/i.test(cmd);
       return destructive ? { message: "Destructive database statement: developer approval required. Count the affected rows first and scope it to explicit ids." } : null;

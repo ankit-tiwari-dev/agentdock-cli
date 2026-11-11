@@ -12,12 +12,12 @@ const REDACTION_PATTERNS: Array<{
   // No replacement keeps any character of the secret: even a short fragment narrows a brute force.
   {
     category: "ANTHROPIC_KEY",
-    regex: /sk-ant-[a-zA-Z0-9_\-]{20,}/g,
+    regex: /sk-ant-[a-zA-Z0-9_-]{20,}/g,
     replacement: () => `[REDACTED_SECRET:ANTHROPIC_KEY]`,
   },
   {
     category: "OPENAI_KEY",
-    regex: /sk-(?:proj-)?[a-zA-Z0-9_\-]{30,}/g,
+    regex: /sk-(?:proj-)?[a-zA-Z0-9_-]{30,}/g,
     replacement: () => `[REDACTED_SECRET:OPENAI_KEY]`,
   },
   {
@@ -32,12 +32,12 @@ const REDACTION_PATTERNS: Array<{
   },
   {
     category: "GOOGLE_API_KEY",
-    regex: /AIza[0-9A-Za-z_\-]{35}/g,
+    regex: /AIza[0-9A-Za-z_-]{35}/g,
     replacement: () => `[REDACTED_SECRET:GOOGLE_API_KEY]`,
   },
   {
     category: "JWT",
-    regex: /eyJ[a-zA-Z0-9_\-]{8,}\.eyJ[a-zA-Z0-9_\-]{8,}\.[a-zA-Z0-9_\-]{8,}/g,
+    regex: /eyJ[a-zA-Z0-9_-]{8,}\.eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}/g,
     replacement: () => `[REDACTED_SECRET:JWT]`,
   },
   {
@@ -47,7 +47,7 @@ const REDACTION_PATTERNS: Array<{
   },
   {
     category: "CONNECTION_STRING",
-    regex: /([a-z][a-z0-9+.\-]*:\/\/[^\s:/@]+:)([^\s@/]{3,})(@)/gi,
+    regex: /([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)([^\s@/]{3,})(@)/gi,
     replacement: (_m, prefix, _password, at) => `${prefix}[REDACTED_SECRET:PASSWORD]${at}`,
   },
   // AWS Access Key ID
