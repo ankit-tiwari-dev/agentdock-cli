@@ -38,6 +38,23 @@ function shorten(text: string, max: number): string {
   return `${space > max * 0.6 ? cut.slice(0, space) : cut}…`;
 }
 
+const TRIGGER = "(Triggered by";
+
+/**
+ * `reason` without a closing `(Triggered by …)` trailer and the whitespace around it, as
+ * `.replace(/\s*\(Triggered by[^)]*\)\s*$/, "")` does. Done by hand because that regex retries from every
+ * position and is quadratic on a long run of spaces or of repeated trailers.
+ */
+function withoutTrigger(reason: string): string {
+  const end = reason.trimEnd();
+  if (!end.endsWith(")")) return reason;
+  const close = end.length - 1;
+  // The trailer holds no `)` of its own, so it starts after the one before the closing `)`.
+  const start = end.indexOf(TRIGGER, end.lastIndexOf(")", close - 1) + 1);
+  if (start === -1 || start + TRIGGER.length > close) return reason;
+  return end.slice(0, start).trimEnd();
+}
+
 /** What happened in a session, computed from its audit events alone (no model involved). */
 export function digestSession(sessionId: string, events: AuditEvent[], projectRoot: string): SessionDigest {
   const digest: SessionDigest = {
@@ -66,7 +83,7 @@ export function digestSession(sessionId: string, events: AuditEvent[], projectRo
     digest.toolCalls++;
 
     if (e.policyVerdict === "DENY" || e.policyVerdict === "REQUIRE_MANUAL_APPROVAL") {
-      const reason = shorten(inertLine((e.policyReason ?? "").replace(/\s*\(Triggered by[^)]*\)\s*$/, "")), 140);
+      const reason = shorten(inertLine(withoutTrigger(e.policyReason ?? "")), 140);
       const key = `${e.policyVerdict}|${reason}`;
       const i = interventionIndex.get(key);
       if (i === undefined) {

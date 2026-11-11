@@ -157,3 +157,57 @@ test("regression: * and 1. checklist items count, fenced # lines are not heading
   );
   assert.equal(spec.overview, "");
 });
+
+// Spec text is written by whoever edits the repo, agents included, and is parsed inside the hook's 1500 ms
+// budget. 300 ms leaves room for a slow CI runner.
+const LINEAR_BUDGET_MS = 300;
+const LONG = 100_000;
+
+function elapsedMs(fn: () => unknown): number {
+  const start = performance.now();
+  fn();
+  return performance.now() - start;
+}
+
+test("regression: a checklist line with a long run of spaces before a line break parses in linear time", () => {
+  const md = `## Acceptance Criteria\n- [ ]${" ".repeat(LONG)}x\ry\n`;
+  assert.ok(elapsedMs(() => parseSpecificationMarkdown(md)) < LINEAR_BUDGET_MS);
+
+  const parsed = parseSpecificationMarkdown(
+    [
+      "## Acceptance Criteria",
+      "- [ ]   Login works  ",
+      "* [x] AC-7 :  Logout works",
+      "1. [X]\u2028AC-8 - Session expires",
+      "- [ ] broken\rline",
+      "- [ ] AC-9: split\u2028line",
+      "",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    parsed.acceptanceCriteria.map((c) => [c.id, c.description, c.completed]),
+    [
+      ["AC-1", "Login works", false],
+      ["AC-7", "Logout works", true],
+      ["AC-8", "Session expires", true],
+    ],
+  );
+});
+
+// The ID check only ever sees text the checklist match already trimmed and cut at the line end, so the old
+// code was already fast here. Kept so the rewrite stays fast and keeps its meaning.
+test("criterion IDs stay fast on a long run of spaces after the ID", () => {
+  const md = `## Acceptance Criteria\n- [ ] A-9-${" ".repeat(LONG)}x\n- [ ] A-9${" ".repeat(LONG)}x\n`;
+  assert.ok(elapsedMs(() => parseSpecificationMarkdown(md)) < LINEAR_BUDGET_MS);
+  const parsed = parseSpecificationMarkdown(
+    "## Criteria\n- [ ] AC-2 - - dashed\n- [ ] UI - shows banner\n- [ ] AB-3:\n",
+  );
+  assert.deepEqual(
+    parsed.acceptanceCriteria.map((c) => [c.id, c.description]),
+    [
+      ["AC-2", "- dashed"],
+      ["AC-3", "UI - shows banner"],
+      ["AB-3", ""],
+    ],
+  );
+});

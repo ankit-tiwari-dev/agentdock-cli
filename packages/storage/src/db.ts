@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Session, Specification, AuditEvent, VerificationReport } from "../../core/src/index.ts";
@@ -19,10 +19,12 @@ export class StorageEngine {
     }
 
     this.db = new DatabaseSync(dbPath);
-    // An in-memory store must not write into whatever folder the process happens to run in.
+    // An in-memory store must not write into whatever folder the process happens to run in. Its blobs go to a
+    // fresh temp folder with a random name, made on the first blob write: a fixed name (such as one built from
+    // the pid) could be created first by another local user, who could then read or plant blobs.
     const resolvedBlobDir =
       blobDir ??
-      (dbPath === ":memory:" ? join(tmpdir(), `ctrlplane-blobs-${process.pid}`) : join(dirname(dbPath), "blobs"));
+      (dbPath === ":memory:" ? () => mkdtempSync(join(tmpdir(), "ctrlplane-blobs-")) : join(dirname(dbPath), "blobs"));
     this.blobStore = new BlobStore(resolvedBlobDir);
 
     this.initPragmas();

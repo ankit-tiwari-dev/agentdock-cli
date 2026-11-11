@@ -20,9 +20,11 @@ export function defaultHookCommand(): string {
  * The exact shapes `init` writes, now and in earlier versions: `node "<...>/cli/src/bin.ts" hook <Event>`,
  * `[npx [-y]] ctrlplane hook <Event>` or `npx -y @ctrlplane/cli hook <Event>`, optionally `--agent <name>`.
  * Anything else (a user's `~/bin/ctrlplane hook-audit.sh`) belongs to someone else and is left alone.
+ * After `node\s+` the path starts with a quote or a non-space: same matches as `node\s+"?[^"]*`, but a long
+ * run of spaces can only be split one way, so the check stays linear on it.
  */
 const OUR_HOOK_COMMAND =
-  /^\s*(?:node\s+"?[^"]*[\\/]cli[\\/]src[\\/]bin\.ts"?|(?:npx\s+(?:-y\s+|--yes\s+)?)?(?:@ctrlplane\/cli(?:@[\w.-]+)?|ctrlplane))\s+hook(?:\s+[A-Za-z]+)?(?:\s+--agent\s+[\w-]+)?\s*$/;
+  /^\s*(?:node\s+(?:"[^"]*|[^\s"][^"]*)?[\\/]cli[\\/]src[\\/]bin\.ts"?|(?:npx\s+(?:-y\s+|--yes\s+)?)?(?:@ctrlplane\/cli(?:@[\w.-]+)?|ctrlplane))\s+hook(?:\s+[A-Za-z]+)?(?:\s+--agent\s+[\w-]+)?\s*$/;
 
 /** Recognises hook entries we wrote, including those from earlier versions. */
 export function isCtrlplaneCommand(command: unknown): boolean {

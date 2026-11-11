@@ -6,11 +6,23 @@ import { join } from "node:path";
 export const BLOB_THRESHOLD_BYTES = 64 * 1024; // 64 KB
 
 export class BlobStore {
-  private baseDir: string;
+  private baseDir: string | undefined;
+  private readonly createDir: (() => string) | undefined;
 
-  /** The folder is created on the first write, so opening a store never leaves an empty folder behind. */
-  constructor(baseDir: string) {
-    this.baseDir = baseDir;
+  /**
+   * `baseDir` is a folder path, or a function that creates a fresh folder and returns its path (an in-memory
+   * store passes one that calls `mkdtempSync`). Either way the folder is made on the first write, so opening a
+   * store never leaves an empty folder behind.
+   */
+  constructor(baseDir: string | (() => string)) {
+    if (typeof baseDir === "string") this.baseDir = baseDir;
+    else this.createDir = baseDir;
+  }
+
+  /** The folder to write into, created by `createDir` the first time it is needed. */
+  private dirForWrite(): string {
+    this.baseDir ??= (this.createDir as () => string)();
+    return this.baseDir;
   }
 
   /**
@@ -26,9 +38,10 @@ export class BlobStore {
     const sha256 = createHash("sha256").update(buffer).digest("hex");
     const compressed = gzipSync(buffer);
 
-    const filePath = join(this.baseDir, `${sha256}.gz`);
+    const dir = this.dirForWrite();
+    const filePath = join(dir, `${sha256}.gz`);
     if (!existsSync(filePath)) {
-      mkdirSync(this.baseDir, { recursive: true });
+      mkdirSync(dir, { recursive: true });
       writeFileSync(filePath, compressed);
     }
 
@@ -43,8 +56,8 @@ export class BlobStore {
    * Reads and decompresses a stored blob
    */
   public retrieve(sha256: string): string {
-    const filePath = join(this.baseDir, `${sha256}.gz`);
-    if (!existsSync(filePath)) {
+    const filePath = this.baseDir === undefined ? undefined : join(this.baseDir, `${sha256}.gz`);
+    if (filePath === undefined || !existsSync(filePath)) {
       throw new Error(`Blob not found: ${sha256}`);
     }
     const compressed = readFileSync(filePath);
@@ -52,6 +65,6 @@ export class BlobStore {
   }
 
   public exists(sha256: string): boolean {
-    return existsSync(join(this.baseDir, `${sha256}.gz`));
+    return this.baseDir !== undefined && existsSync(join(this.baseDir, `${sha256}.gz`));
   }
 }

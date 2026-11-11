@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -182,5 +182,58 @@ test("regression: CTRLPLANE_HOOK_COMMAND is ignored unless the explicit override
     else process.env.CTRLPLANE_HOOK_COMMAND = prev.cmd;
     if (prev.allow === undefined) delete process.env.CTRLPLANE_ALLOW_HOOK_COMMAND_OVERRIDE;
     else process.env.CTRLPLANE_ALLOW_HOOK_COMMAND_OVERRIDE = prev.allow;
+  }
+});
+
+test("regression: recognising our hook command answers in linear time on `node` followed by many spaces", () => {
+  const start = performance.now();
+  isCtrlplaneCommand(`node${" ".repeat(100_000)}x`);
+  // Runs on every hook entry during install and uninstall; 300 ms leaves room for a slow CI runner.
+  assert.ok(performance.now() - start < 300);
+
+  for (const ours of [
+    'node "/home/me/agentdock/packages/cli/src/bin.ts" hook PreToolUse',
+    "node   C:\\work\\agentdock\\packages\\cli\\src\\bin.ts hook --agent codex",
+    "  node /x/cli/src/bin.ts hook  ",
+    'node "/odd path/cli/src/bin.ts" hook Stop',
+    "node /cli/src/bin.ts hook",
+    "node\n/x/cli/src/bin.ts hook",
+    "npx -y ctrlplane hook SessionStart",
+  ]) {
+    assert.equal(isCtrlplaneCommand(ours), true, ours);
+  }
+  for (const theirs of [
+    "node ~/bin/ctrlplane hook-audit.sh",
+    'node ""/cli/src/bin.ts hook',
+    "node /x/cli/src/bin.ts hook rm -rf",
+    "nodex /x/cli/src/bin.ts hook",
+  ]) {
+    assert.equal(isCtrlplaneCommand(theirs), false, theirs);
+  }
+});
+
+// Reading the plugin file is now one operation instead of a check followed by a read, which closes a
+// check-then-use window. The window cannot be hit reliably in a test, so this only pins the behaviour.
+test("OpenCode install writes a missing plugin, replaces a stale one and leaves a current one untouched", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ctrlplane-ocplugin-"));
+  try {
+    const first = injectOpenCodePlugin(dir, "ctrlplane hook");
+    const current = readFileSync(first.pluginPath, "utf8");
+    assert.equal(current, buildOpenCodePlugin("ctrlplane hook"));
+
+    const old = new Date(2000, 0, 1);
+    utimesSync(first.pluginPath, old, old);
+    injectOpenCodePlugin(dir, "ctrlplane hook");
+    assert.equal(statSync(first.pluginPath).mtimeMs, old.getTime());
+
+    writeFileSync(first.pluginPath, "stale");
+    injectOpenCodePlugin(dir, "ctrlplane hook");
+    assert.equal(readFileSync(first.pluginPath, "utf8"), current);
+
+    rmSync(first.pluginPath);
+    mkdirSync(first.pluginPath);
+    assert.throws(() => injectOpenCodePlugin(dir, "ctrlplane hook"), { code: "EISDIR" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

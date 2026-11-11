@@ -328,6 +328,11 @@ test("handoff records branch, uncommitted files and the note", () => {
 
 test("hook without a daemon: SessionStart returns the pack as additionalContext and prompts are recorded", async () => {
   const dir = tempProject();
+  // This is the local no-daemon path. In CI a missing daemon fails closed on purpose, so the test
+  // must not inherit the CI runner's CI=true.
+  const saved = { CI: process.env.CI, CTRLPLANE_MODE: process.env.CTRLPLANE_MODE };
+  delete process.env.CI;
+  delete process.env.CTRLPLANE_MODE;
   try {
     const seed = new StorageEngine(auditDbPath(dir));
     seed.addMemory("Never push to main", { pinned: true });
@@ -351,6 +356,10 @@ test("hook without a daemon: SessionStart returns the pack as additionalContext 
     assert.match(ctx, /Never push to main/);
     assert.match(ctx, /Ship the retry fix/);
   } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     rmSync(dir, { recursive: true, force: true });
   }
 });

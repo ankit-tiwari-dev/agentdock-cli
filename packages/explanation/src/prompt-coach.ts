@@ -101,8 +101,11 @@ interface PromptSignals {
 
 function countTaskSegments(prompt: string): number {
   // Splits on sentence ends, list items and chaining words; the dot inside "src/auth.ts" is not a sentence end.
+  // A sentence end is the last mark of a run ("!!" splits after the second "!"): the marks left in the segment
+  // hold no words, so the count is the same as splitting on the whole run, and `[.!?;]+(?=\s|$)` was
+  // quadratic on a long run of marks.
   const segments = prompt
-    .split(/[.!?;]+(?=\s|$)|\n+|\b(?:and also|also|and then|then|plus)\b|,\s*and\b/i)
+    .split(/[.!?;](?=\s|$)|\n+|\b(?:and also|also|and then|then|plus)\b|,\s*and\b/i)
     .map((s) => s.trim())
     .filter(Boolean);
 

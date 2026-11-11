@@ -97,3 +97,15 @@ test("Prompt Coach - score stays within 0 to 100", () => {
     assert.ok(score >= 0 && score <= 100, `score ${score} for ${JSON.stringify(prompt.slice(0, 20))}`);
   }
 });
+
+test("regression: task counting answers in linear time on a long run of punctuation", () => {
+  const start = performance.now();
+  evaluatePromptQuality(`fix ${"!".repeat(100_000)}x`);
+  // The coach runs on every prompt inside the hook's 1500 ms budget; 300 ms leaves room for a slow CI runner.
+  assert.ok(performance.now() - start < 300);
+
+  const split = evaluatePromptQuality("Fix the login bug!! Then add a test?! Also update the docs... and deploy it");
+  assert.ok(split.detectedIssues.some((i) => i.includes("Several separate tasks (4)")));
+  const oneTask = evaluatePromptQuality("Fix the crash in src/auth.ts!!!x when the token is empty");
+  assert.ok(!oneTask.detectedIssues.some((i) => i.includes("Several separate tasks")));
+});

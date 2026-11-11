@@ -12,6 +12,18 @@ import {
 import { DEFAULT_PROJECT_CONFIG } from "../../../policy-engine/src/config.ts";
 
 /**
+ * Creates `path` with `content` unless something is already there. One exclusive create rather than a check
+ * followed by a write, so nothing can appear at `path` in between and be overwritten.
+ */
+function writeIfAbsent(path: string, content: string): void {
+  try {
+    writeFileSync(path, content, { encoding: "utf8", flag: "wx" });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+}
+
+/**
  * Reads every agent config file `init` is about to change, so a file it cannot safely merge into
  * (invalid JSON, wrong shape) stops the install before anything has been created or rewritten.
  */
@@ -39,23 +51,20 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
 
   // Spec and shared policy config are meant to be committed; runtime state is not.
   const gitignorePath = join(ctrlplaneDir, ".gitignore");
-  if (!existsSync(gitignorePath)) {
-    writeFileSync(
-      gitignorePath,
-      [
-        "audit.db",
-        "audit.db-*",
-        "blobs/",
-        "state/",
-        "daemon.lock",
-        "daemon.log",
-        "dashboard.token",
-        "*.local.json",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-  }
+  writeIfAbsent(
+    gitignorePath,
+    [
+      "audit.db",
+      "audit.db-*",
+      "blobs/",
+      "state/",
+      "daemon.lock",
+      "daemon.log",
+      "dashboard.token",
+      "*.local.json",
+      "",
+    ].join("\n"),
+  );
 
   // 1. Initialize spec.md
   const specManager = new SpecManager(projectPath);
@@ -63,9 +72,7 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
 
   // 2. Shared policy config (committed). Personal overrides go in policies.local.json.
   const policyPath = join(ctrlplaneDir, "policies.json");
-  if (!existsSync(policyPath)) {
-    writeFileSync(policyPath, JSON.stringify(DEFAULT_PROJECT_CONFIG, null, 2) + "\n", "utf8");
-  }
+  writeIfAbsent(policyPath, JSON.stringify(DEFAULT_PROJECT_CONFIG, null, 2) + "\n");
 
   // 3. Inject hooks based on selected agent
   const targetAgent = options?.agent?.toLowerCase() ?? "all";

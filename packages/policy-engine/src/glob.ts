@@ -61,10 +61,20 @@ export function normalizeFsPath(path: string): string {
       if (i === 0 && /^[a-zA-Z]:$/.test(seg)) return seg;
       const colon = seg.indexOf(":");
       const base = colon > 0 ? seg.slice(0, colon) : seg;
-      const trimmed = base.replace(/[. ]+$/, "");
+      const trimmed = trimTrailing(base, ". ");
       return trimmed === "" ? base : trimmed;
     })
     .join("/");
+}
+
+/**
+ * `text` without any of `chars` at its end. A loop rather than `/[...]+$/`: that regex retries from every
+ * position of a long run that is not at the end, which is quadratic on agent-controlled paths.
+ */
+export function trimTrailing(text: string, chars: string): string {
+  let end = text.length;
+  while (end > 0 && chars.includes(text[end - 1])) end--;
+  return text.slice(0, end);
 }
 
 export function matchesGlob(path: string, glob: string): boolean {

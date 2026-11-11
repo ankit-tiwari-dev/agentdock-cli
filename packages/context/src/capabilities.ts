@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { inertLine } from "./intent.ts";
@@ -15,12 +15,18 @@ export interface Capability {
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
 
 function readJson(path: string): Record<string, unknown> | null {
+  let fd: number | undefined;
   try {
-    if (!existsSync(path) || statSync(path).size > MAX_JSON_BYTES) return null;
-    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    // One open handle for the size check and the read, so the file cannot be swapped between them.
+    // A missing file throws ENOENT here and counts as no config.
+    fd = openSync(path, "r");
+    if (fstatSync(fd).size > MAX_JSON_BYTES) return null;
+    const parsed = JSON.parse(readFileSync(fd, "utf8"));
     return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 

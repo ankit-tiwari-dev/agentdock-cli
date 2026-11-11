@@ -6,6 +6,19 @@ export interface ParsedSpecResult {
   rawContent: string;
 }
 
+/** The line breaks `.` does not match. */
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+
+/**
+ * What a regex tail `\s*(.*)$` would capture from `rest`: the text after its leading whitespace, or null when
+ * a line break is still left in it. Done by hand because that tail backtracks quadratically on a long run of
+ * spaces followed by a line break.
+ */
+function restOfLine(rest: string): string | null {
+  const text = rest.trimStart();
+  return LINE_BREAK.test(text) ? null : text;
+}
+
 /**
  * Parses a markdown specification file into a structured Specification domain object
  */
@@ -93,20 +106,22 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
       if (cleanStep) plan.push(cleanStep);
     } else if (currentSection === "criteria" && line) {
       // Checklist item in any list style: "- [ ]", "* [x]", "1. [ ]"
-      const match = line.match(/^(?:[-*]|\d+\.)\s+\[([ xX])\]\s*(.*)$/);
-      if (match) {
+      const match = /^(?:[-*]|\d+\.)\s+\[([ xX])\]/.exec(line);
+      const text = match ? restOfLine(line.slice(match[0].length)) : null;
+      if (match && text !== null) {
         const completed = match[1].toLowerCase() === "x";
-        const rawDescription = match[2].trim();
+        const rawDescription = text.trim();
 
         // Explicit ID: "AC-1: Description" or "AC-01 - Description". Only letters-dash-digits counts, so
         // "UI - shows banner" is a description. An item without one is numbered after the loop.
-        const idMatch = rawDescription.match(/^([A-Z]+-\d+)\s*[:-]\s*(.*)$/);
+        const idMatch = /^([A-Z]+-\d+)\s*[:-]/.exec(rawDescription);
+        const idText = idMatch ? restOfLine(rawDescription.slice(idMatch[0].length)) : null;
         let id = "";
         let description = rawDescription;
 
-        if (idMatch) {
+        if (idMatch && idText !== null) {
           id = idMatch[1];
-          description = idMatch[2];
+          description = idText;
         }
 
         const category = categorizeCriterion(description);

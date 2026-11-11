@@ -202,17 +202,35 @@ export function clearPause(projectRoot: string): boolean {
   return true;
 }
 
-/** "30m", "2h", "90s", "1h30m" → milliseconds. */
+const UNIT_MS: Record<string, number> = { h: 3600_000, m: 60_000, s: 1000 };
+const isDigit = (c: string) => c >= "0" && c <= "9";
+
+/**
+ * "30m", "2h", "90s", "1h30m" → milliseconds: every run of digits followed (after optional whitespace)
+ * by h, m or s, in any case. A scan rather than `/(\d+)\s*(h|m|s)/gi`, which retries from every digit
+ * of a long digit run and is quadratic on it.
+ */
 export function parseDuration(text: string | undefined): number | null {
   if (!text) return null;
-  const re = /(\d+)\s*(h|m|s)/gi;
   let total = 0;
   let matched = false;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    matched = true;
-    const n = Number(m[1]);
-    total += m[2].toLowerCase() === "h" ? n * 3600_000 : m[2].toLowerCase() === "m" ? n * 60_000 : n * 1000;
+  let i = 0;
+  while (i < text.length) {
+    if (!isDigit(text[i])) {
+      i++;
+      continue;
+    }
+    const start = i;
+    while (i < text.length && isDigit(text[i])) i++;
+    let next = i;
+    while (next < text.length && /\s/.test(text[next])) next++;
+    const unit = next < text.length ? UNIT_MS[text[next].toLowerCase()] : undefined;
+    if (unit !== undefined) {
+      matched = true;
+      total += Number(text.slice(start, i)) * unit;
+      next++;
+    }
+    i = next;
   }
   return matched ? total : null;
 }

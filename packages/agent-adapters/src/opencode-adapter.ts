@@ -4,6 +4,16 @@ import { defaultHookCommand, readJsonObject, writeJsonIfChanged } from "./hook-c
 
 const PLUGIN_REL = "./plugins/ctrlplane.mjs";
 
+/** The file's text, or "" when it does not exist. One read, not a check followed by a read. */
+function readIfPresent(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw err;
+  }
+}
+
 /**
  * OpenCode has no command hooks; it loads JS plugins. The generated plugin forwards
  * `tool.execute.before/after` and session events to the same hook command, and throws
@@ -94,7 +104,7 @@ export function injectOpenCodePlugin(
 
   mkdirSync(join(dir, "plugins"), { recursive: true });
   const source = buildOpenCodePlugin(hookCommand);
-  const current = existsSync(pluginPath) ? readFileSync(pluginPath, "utf8") : "";
+  const current = readIfPresent(pluginPath);
   if (current !== source) writeFileSync(pluginPath, source);
 
   const plugins = config.plugin as unknown[];

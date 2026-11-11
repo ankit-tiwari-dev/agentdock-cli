@@ -95,3 +95,31 @@ test("regression: MCP filesystem tools map to write/edit with their path argumen
     ["tests/a.test.ts", "src/a.ts"],
   );
 });
+
+// Tool and model names come from the agent's hook payload and are read inside the hook's 1500 ms budget.
+// 300 ms leaves room for a slow CI runner.
+const LINEAR_BUDGET_MS = 300;
+
+function elapsedMs(fn: () => unknown): number {
+  const start = performance.now();
+  fn();
+  return performance.now() - start;
+}
+
+test("regression: an MCP tool name with many `__` separators is canonicalized in linear time", () => {
+  assert.ok(elapsedMs(() => canonicalizeToolName(`mcp__a__${"0__0".repeat(50_000)}!`)) < LINEAR_BUDGET_MS);
+  assert.equal(canonicalizeToolName("mcp__fs__write_file"), "file_write");
+  assert.equal(canonicalizeToolName("MCP__my__server__edit_file"), "file_edit");
+  assert.equal(canonicalizeToolName("mcp__a___write_file"), "file_write");
+  assert.equal(canonicalizeToolName("mcp____write_file"), "unknown");
+  assert.equal(canonicalizeToolName("mcp__a\n__write_file"), "unknown");
+  assert.equal(canonicalizeToolName("mcp__fs__run"), "unknown");
+  assert.equal(canonicalizeToolName("mcp__fs__write-file"), "unknown");
+});
+
+test("regression: a model name with many `@` before a line break is normalized in linear time", () => {
+  assert.ok(elapsedMs(() => normalizeModelName(`${"@".repeat(100_000)}\nx`)) < LINEAR_BUDGET_MS);
+  assert.equal(normalizeModelName("claude-opus-4-5@20251101"), "claude-opus-4-5");
+  assert.equal(normalizeModelName("a@b\nc@d"), "a@b\nc");
+  assert.equal(normalizeModelName("a@b\n"), "a");
+});

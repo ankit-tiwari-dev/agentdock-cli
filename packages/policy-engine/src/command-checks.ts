@@ -1,7 +1,7 @@
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, posix, resolve } from "node:path";
 import { commandVariants, isDynamicWord, peelCommand, stripCommandPrefix, tokenize } from "./shell.ts";
-import { normalizeFsPath, toProjectPath } from "./glob.ts";
+import { normalizeFsPath, toProjectPath, trimTrailing } from "./glob.ts";
 import { isSensitiveFile } from "../../git-analyzer/src/index.ts";
 
 /** Words of the command that actually runs (wrappers peeled, program normalised), bash reading. */
@@ -75,7 +75,7 @@ function withCwd(x: string, cwd: string): string {
  * a parent directory, or an absolute path outside both the project and the temp directory.
  */
 export function isCatastrophicTarget(target: string, projectRoot: string): boolean {
-  const x = posix.normalize(target.replace(/\\/g, "/") || ".").replace(/\/+$/, "") || "/";
+  const x = trimTrailing(posix.normalize(target.replace(/\\/g, "/") || "."), "/") || "/";
   if (["/", "/*", "~", "~/*", "*", ".", "./*", "$HOME", "${HOME}", "%USERPROFILE%"].includes(x)) return true;
   if (x.startsWith("~") || x.startsWith("$HOME") || x.startsWith("${HOME}") || x.startsWith("%USERPROFILE%"))
     return true;
@@ -109,7 +109,9 @@ export function isForcePush(sub: string): boolean {
   if (pushAt === -1) return false;
   const rest = t.slice(pushAt + 1);
   if (rest.some((x) => x === "--force" || x === "--mirror" || x === "--delete" || x === "-d")) return true;
-  if (rest.some((x) => /^-[a-zA-Z]*f[a-zA-Z]*$/.test(x))) return true;
+  // Short flags bundled with `f` (`-uf`). Letters-only plus a separate `f` check, because
+  // `/^-[a-zA-Z]*f[a-zA-Z]*$/` backtracks quadratically on a long run of letters.
+  if (rest.some((x) => /^-[a-zA-Z]+$/.test(x) && x.includes("f"))) return true;
   return rest.some((x) => !x.startsWith("-") && x.startsWith("+") && x.length > 1);
 }
 
@@ -147,7 +149,9 @@ export function isForceClean(sub: string): boolean {
 }
 
 export function isDiskWipe(sub: string): boolean {
-  return /^\s*(?:sudo\s+)?(?:mkfs(?:\.\w+)?|format\s+[a-z]:|diskpart|dd\s+.*\bof=\/dev\/)/i.test(sub);
+  // After `dd`, the text up to `of=` is either empty or starts with a non-space. Same matches as
+  // `dd\s+.*\bof=`, but the space run can only be split one way, so a long run of spaces stays linear.
+  return /^\s*(?:sudo\s+)?(?:mkfs(?:\.\w+)?|format\s+[a-z]:|diskpart|dd\s+(?:\S.*)?\bof=\/dev\/)/i.test(sub);
 }
 
 const READERS = new Set([
@@ -473,7 +477,7 @@ export function resolveShellPath(
 /** Absolute, forward-slash, lower-cased where the file system ignores case. */
 export function comparablePath(p: string, projectRoot: string): string {
   const abs = (isAbsolute(p) || /^[a-zA-Z]:/.test(p) ? p : join(projectRoot, p)).replace(/\\/g, "/");
-  const clean = posix.normalize(abs).replace(/\/+$/, "");
+  const clean = trimTrailing(posix.normalize(abs), "/");
   return CASE_INSENSITIVE_FS ? clean.toLowerCase() : clean;
 }
 

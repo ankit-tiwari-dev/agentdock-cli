@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { handleInit } from "../src/commands/init.ts";
+import { DEFAULT_PROJECT_CONFIG } from "../../policy-engine/src/config.ts";
 
 const BIN = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
 
@@ -217,5 +219,32 @@ test("regression: cost warns for an unknown model instead of silently using anot
     assert.doesNotMatch(cli(s.dir, s.home, ["cost", "claude-opus-4-5@20251101", "1", "1"]).out, /unknown model/i);
   } finally {
     s.cleanup();
+  }
+});
+
+// `init` now creates .gitignore and policies.json with an exclusive create instead of a check followed by a
+// write, which closes a check-then-use window. The window cannot be hit reliably in a test, so this only pins
+// the behaviour: missing files are created, existing ones (even a folder in the way) are left alone.
+test("init creates its .gitignore and policies.json once and never overwrites them", () => {
+  const { dir, cleanup } = scratch("init-once");
+  try {
+    handleInit({ projectPath: dir, agent: "claude" });
+    const gitignore = join(dir, ".ctrlplane", ".gitignore");
+    const policies = join(dir, ".ctrlplane", "policies.json");
+    assert.match(readFileSync(gitignore, "utf8"), /^audit\.db$/m);
+    assert.equal(JSON.parse(readFileSync(policies, "utf8")).version, DEFAULT_PROJECT_CONFIG.version);
+
+    writeFileSync(gitignore, "mine\n");
+    writeFileSync(policies, '{"mine":true}\n');
+    handleInit({ projectPath: dir, agent: "claude" });
+    assert.equal(readFileSync(gitignore, "utf8"), "mine\n");
+    assert.equal(readFileSync(policies, "utf8"), '{"mine":true}\n');
+
+    rmSync(policies);
+    mkdirSync(policies);
+    assert.equal(handleInit({ projectPath: dir, agent: "claude" }).success, true);
+    assert.equal(statSync(policies).isDirectory(), true);
+  } finally {
+    cleanup();
   }
 });

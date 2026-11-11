@@ -88,11 +88,26 @@ const TOOL_MAPPINGS: Record<string, CanonicalToolVerb> = {
 // that happens to be called `run` or `exec` is not treated as a shell.
 const MCP_FILE_TOOLS = new Set(["write_file", "create_file", "edit_file", "delete_file", "move_file"]);
 
+/**
+ * The `<tool>` of `mcp__<server>__<tool>`, split at the last `__` as `/^mcp__.+__([a-z0-9_]+)$/` does, or
+ * undefined for any other name. Done by hand because that regex is quadratic on a name with many `__`.
+ */
+function mcpToolName(name: string): string | undefined {
+  if (!name.startsWith("mcp__")) return undefined;
+  // The last `__` that still leaves a tool name after it, the one the greedy `.+` picks. Any earlier `__` gives
+  // a longer tool name ending in this one, so it can only succeed where this one does: no need to try them.
+  const split = name.lastIndexOf("__", name.length - 3);
+  if (split < "mcp__".length + 1) return undefined;
+  const tool = name.slice(split + 2);
+  if (!/^[a-z0-9_]+$/.test(tool) || /[\n\r\u2028\u2029]/.test(name.slice("mcp__".length, split))) return undefined;
+  return tool;
+}
+
 export function canonicalizeToolName(rawToolName?: string): CanonicalToolVerb {
   if (!rawToolName) return "unknown";
   const normalized = rawToolName.trim().toLowerCase();
-  const mcp = /^mcp__.+__([a-z0-9_]+)$/.exec(normalized);
-  if (mcp) return MCP_FILE_TOOLS.has(mcp[1]) ? (TOOL_MAPPINGS[mcp[1]] ?? "unknown") : "unknown";
+  const mcp = mcpToolName(normalized);
+  if (mcp !== undefined) return MCP_FILE_TOOLS.has(mcp) ? (TOOL_MAPPINGS[mcp] ?? "unknown") : "unknown";
   return TOOL_MAPPINGS[normalized] ?? "unknown";
 }
 
