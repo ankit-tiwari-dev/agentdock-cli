@@ -15,7 +15,10 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
   let status: SpecStatus = "draft";
   let approvedBy: string | undefined;
   let approvedAt: number | undefined;
+  let approvedHash: string | undefined;
 
+  // An editor may save the file with a byte-order mark, which would hide the frontmatter.
+  if (markdown.charCodeAt(0) === 0xfeff) markdown = markdown.slice(1);
   let body = markdown;
 
   // 1. Extract YAML frontmatter if present
@@ -33,9 +36,10 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
 
           if (key === "title") title = value;
           if (key === "version") version = parseInt(value, 10) || 1;
-          if (key === "status") status = value as SpecStatus;
+          if (key === "status") status = value.toLowerCase() as SpecStatus;
           if (key === "approved_by" || key === "author") approvedBy = value;
           if (key === "approved_at") approvedAt = parseInt(value, 10) || undefined;
+          if (key === "approved_hash") approvedHash = value;
         }
       }
     }
@@ -48,11 +52,17 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
 
   let currentSection: "none" | "overview" | "plan" | "criteria" = "none";
   const overviewLines: string[] = [];
+  /** Opening fence character while inside a fenced code block, where a `#` line is code, not a heading. */
+  let fence: string | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
 
-    if (line.startsWith("# ")) {
+    const fenceMatch = line.match(/^(`{3,}|~{3,})/);
+    const inCode = fence !== null || fenceMatch !== null;
+    if (fenceMatch && (fence === null || fenceMatch[1][0] === fence)) fence = fence === null ? fenceMatch[1][0] : null;
+
+    if (!inCode && line.startsWith("# ")) {
       if (title === "Untitled Feature Specification") {
         title = line.replace(/^#\s+/, "").trim();
       }
@@ -60,17 +70,17 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
       continue;
     }
 
-    if (line.startsWith("## Implementation Plan") || line.startsWith("## Plan")) {
+    if (!inCode && (line.startsWith("## Implementation Plan") || line.startsWith("## Plan"))) {
       currentSection = "plan";
       continue;
     }
 
-    if (line.startsWith("## Acceptance Criteria") || line.startsWith("## Criteria")) {
+    if (!inCode && (line.startsWith("## Acceptance Criteria") || line.startsWith("## Criteria"))) {
       currentSection = "criteria";
       continue;
     }
 
-    if (line.startsWith("## ")) {
+    if (!inCode && line.startsWith("## ")) {
       currentSection = "overview";
       continue;
     }
@@ -82,15 +92,16 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
       const cleanStep = line.replace(/^(?:\d+\.|-|\*)\s+/, "").trim();
       if (cleanStep) plan.push(cleanStep);
     } else if (currentSection === "criteria" && line) {
-      // Check for checklist pattern: - [ ] or - [x]
-      const match = line.match(/^-\s+\[([ xX])\]\s*(.*)$/);
+      // Checklist item in any list style: "- [ ]", "* [x]", "1. [ ]"
+      const match = line.match(/^(?:[-*]|\d+\.)\s+\[([ xX])\]\s*(.*)$/);
       if (match) {
         const completed = match[1].toLowerCase() === "x";
         const rawDescription = match[2].trim();
 
-        // Check for explicit ID: "AC-1: Description" or "AC-01 - Description"
-        const idMatch = rawDescription.match(/^([A-Z0-9_-]+)\s*[:-]\s*(.*)$/);
-        let id = `AC-${criteria.length + 1}`;
+        // Explicit ID: "AC-1: Description" or "AC-01 - Description". Only letters-dash-digits counts, so
+        // "UI - shows banner" is a description. An item without one is numbered after the loop.
+        const idMatch = rawDescription.match(/^([A-Z]+-\d+)\s*[:-]\s*(.*)$/);
+        let id = "";
         let description = rawDescription;
 
         if (idMatch) {
@@ -111,8 +122,23 @@ export function parseSpecificationMarkdown(markdown: string): Specification {
     }
   }
 
+  // Auto-numbered IDs follow the item's position but skip any ID already used, explicit IDs included.
+  const used = new Set(criteria.map((c) => c.id).filter(Boolean));
+  criteria.forEach((c, index) => {
+    if (c.id) return;
+    let n = index + 1;
+    while (used.has(`AC-${n}`)) n++;
+    c.id = `AC-${n}`;
+    used.add(c.id);
+  });
+
   const overview = overviewLines.join("\n").trim();
   const hash = computeSpecHash(title, overview, plan, criteria);
+
+  // Approval covers the content it was given for. A spec edited since (or marked approved by hand, with no
+  // approved_hash) is a draft until it is approved again. The status and approved_* lines are not part of the
+  // hash, so writing the approval does not invalidate it.
+  if (status === "approved" && approvedHash !== hash) status = "draft";
 
   return {
     id: `spec_${hash.slice(0, 12)}`,

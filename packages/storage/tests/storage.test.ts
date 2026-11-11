@@ -5,6 +5,7 @@ import { createSession, createAuditEvent } from "../../core/src/index.ts";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 test("Redaction engine identifies and scrubs known secret tokens", () => {
   const dirty = `
@@ -90,4 +91,58 @@ test("StorageEngine manages sessions, events with auto-redaction", () => {
   assert.ok(savedInput.command.includes("[REDACTED_SECRET:"));
 
   engine.close();
+});
+
+test("regression: the policy reason and memory tags are redacted before they are stored", () => {
+  const engine = new StorageEngine(":memory:");
+  try {
+    const session = createSession({ agentType: "claude-code", projectPath: "/repo/demo", gitBranch: "main" });
+    engine.insertSession(session);
+    const command = "git push https://x:ghp_abcdefghijklmnopqrstuvwxyz0123456789@github.com/o/r main";
+    engine.insertEvent(
+      createAuditEvent({
+        sessionId: session.id,
+        sequenceNum: 1,
+        eventType: "pre_tool",
+        toolName: "Bash",
+        toolInput: { command },
+        policyVerdict: "REQUIRE_MANUAL_APPROVAL",
+        policyReason: `Pushing to a protected branch requires approval. (Triggered by command: '${command}')`,
+      }),
+    );
+    const reason = engine.listEventsForSession(session.id)[0].policyReason ?? "";
+    assert.ok(!reason.includes("ghp_abcdefghij"), `policy reason leaked: ${reason}`);
+    assert.match(reason, /\[REDACTED_SECRET:/);
+
+    engine.addMemory("note", { tags: ["deploy", "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123"] });
+    const tags = engine.listMemory(1)[0].tags;
+    assert.ok(!tags.join(" ").includes("sk-ant-api03"), `tags leaked: ${tags.join(" ")}`);
+    assert.equal(tags[0], "deploy");
+  } finally {
+    engine.close();
+  }
+});
+
+test("regression: a lock that stops WAL setup still leaves the busy timeout set", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ctrlplane-lock-"));
+  const dbPath = join(dir, "audit.db");
+  new StorageEngine(dbPath).close();
+  const setup = new DatabaseSync(dbPath);
+  setup.exec("PRAGMA journal_mode = DELETE;");
+  setup.close();
+  // A reader in the middle of a transaction keeps a shared lock, so switching to WAL fails.
+  const reader = new DatabaseSync(dbPath);
+  reader.exec("BEGIN; SELECT count(*) FROM memory;");
+  let engine: StorageEngine | undefined;
+  try {
+    engine = new StorageEngine(dbPath);
+    const db = (engine as unknown as { db: DatabaseSync }).db;
+    assert.deepEqual({ ...db.prepare("PRAGMA busy_timeout").get() }, { timeout: 1000 });
+    assert.deepEqual({ ...db.prepare("PRAGMA foreign_keys").get() }, { foreign_keys: 1 });
+  } finally {
+    engine?.close();
+    reader.exec("ROLLBACK;");
+    reader.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

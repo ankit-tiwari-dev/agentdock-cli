@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { inertLine } from "./intent.ts";
 
 export type CapabilityKind = "mcp" | "skill" | "agent" | "command" | "hook" | "plugin";
 
@@ -45,9 +46,11 @@ export function scanCapabilities(projectRoot: string, home = homedir()): Capabil
     p.startsWith(home)
       ? `~${p.slice(home.length).replace(/\\/g, "/")}`
       : p.replace(/\\/g, "/").replace(projectRoot.replace(/\\/g, "/") + "/", "");
-  const add = (kind: CapabilityKind, name: string, source: string) => {
-    if (!out.some((c) => c.kind === kind && c.name === name && c.source === label(source)))
-      out.push({ kind, name, source: label(source) });
+  // Names and folder names come from files an agent can write, so each is kept to one inert line.
+  const add = (kind: CapabilityKind, rawName: string, rawSource: string) => {
+    const name = inertLine(rawName);
+    const source = inertLine(label(rawSource));
+    if (!out.some((c) => c.kind === kind && c.name === name && c.source === source)) out.push({ kind, name, source });
   };
 
   const projectMcp = join(projectRoot, ".mcp.json");

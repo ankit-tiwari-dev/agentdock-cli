@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import type { StorageEngine } from "../../storage/src/index.ts";
+import { redactSecrets, type StorageEngine } from "../../storage/src/index.ts";
+import { inertLine } from "./intent.ts";
 
 function git(root: string, args: string[]): string | null {
   try {
@@ -41,7 +42,10 @@ export function writeHandoff(
     lines.push("Working tree clean.");
   }
 
-  if (options.note?.trim()) lines.push(`Note: ${options.note.trim().slice(0, 1000)}`);
+  // Redact before the cut, which could otherwise leave a secret too short to be recognised. An agent can write the
+  // note, so it is kept to one inert line.
+  if (options.note?.trim())
+    lines.push(`Note: ${inertLine(redactSecrets(options.note.trim()).sanitized).slice(0, 1000)}`);
 
   const summary =
     storage.listContextEntries("summary", { limit: 1 })[0] ?? storage.listContextEntries("compact", { limit: 1 })[0];

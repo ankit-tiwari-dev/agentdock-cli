@@ -30,13 +30,14 @@ export class StorageEngine {
   }
 
   private initPragmas(): void {
-    try {
-      this.db.exec("PRAGMA journal_mode = WAL;");
-      this.db.exec("PRAGMA synchronous = NORMAL;");
-      this.db.exec("PRAGMA foreign_keys = ON;");
-      this.db.exec("PRAGMA busy_timeout = 5000;");
-    } catch {
-      // Memory DB or unsupported pragma fallback
+    // busy_timeout comes first and each pragma is tried on its own: a lock that makes the WAL switch fail must not
+    // leave the rest unset. 1000 ms keeps a hook that waits on a locked database inside its 1500 ms budget.
+    for (const pragma of ["busy_timeout = 1000", "journal_mode = WAL", "synchronous = NORMAL", "foreign_keys = ON"]) {
+      try {
+        this.db.exec(`PRAGMA ${pragma};`);
+      } catch {
+        // Memory DB, unsupported pragma or a locked database: keep the defaults for this one.
+      }
     }
   }
 
@@ -291,7 +292,8 @@ export class StorageEngine {
       outputJson,
       isBlobStored,
       event.policyVerdict ?? null,
-      event.policyReason ?? null,
+      // A policy reason quotes the command that triggered it, so it can carry the same secrets as the input.
+      event.policyReason ? redactSecrets(event.policyReason).sanitized : null,
       event.executionDurationMs ?? null,
       event.createdAt,
     );
@@ -474,7 +476,12 @@ export class StorageEngine {
   public addMemory(body: string, options: { tags?: string[]; pinned?: boolean } = {}): number {
     const res = this.db
       .prepare(`INSERT INTO memory (body, tags, pinned, created_at) VALUES (?, ?, ?, ?)`)
-      .run(redactSecrets(body).sanitized, (options.tags ?? []).join(" "), options.pinned ? 1 : 0, Date.now());
+      .run(
+        redactSecrets(body).sanitized,
+        (options.tags ?? []).map((t) => redactSecrets(t).sanitized).join(" "),
+        options.pinned ? 1 : 0,
+        Date.now(),
+      );
     return Number(res.lastInsertRowid);
   }
 

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { canonicalizeToolInput, type AuditEvent } from "../../core/src/index.ts";
 import { toProjectPath } from "../../policy-engine/src/glob.ts";
-import { cleanPrompt } from "./intent.ts";
+import { cleanPrompt, inertLine } from "./intent.ts";
 
 export interface SessionDigest {
   sessionId: string;
@@ -20,11 +20,11 @@ export interface SessionDigest {
 /** `mcp__github__create_issue` → `mcp github`; `Skill {skill}` → `skill x`; `Task/Agent {subagent_type}` → `agent x`. */
 export function capabilityUsed(toolName: string, input: unknown): string | null {
   const mcp = toolName.match(/^mcp__([^_]+(?:_[^_]+)*?)__/);
-  if (mcp) return `mcp ${mcp[1]}`;
+  if (mcp) return `mcp ${inertLine(mcp[1])}`;
   const args = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
-  if (toolName === "Skill" && typeof args.skill === "string") return `skill ${args.skill}`;
+  if (toolName === "Skill" && typeof args.skill === "string") return `skill ${inertLine(args.skill)}`;
   if ((toolName === "Task" || toolName === "Agent") && typeof args.subagent_type === "string")
-    return `agent ${args.subagent_type}`;
+    return `agent ${inertLine(args.subagent_type)}`;
   return null;
 }
 
@@ -64,11 +64,9 @@ export function digestSession(sessionId: string, events: AuditEvent[], projectRo
     }
     if (e.eventType !== "pre_tool" || !e.toolName) continue;
     digest.toolCalls++;
-    const used = capabilityUsed(e.toolName, e.toolInput);
-    if (used && !digest.capabilitiesUsed.includes(used)) digest.capabilitiesUsed.push(used);
 
     if (e.policyVerdict === "DENY" || e.policyVerdict === "REQUIRE_MANUAL_APPROVAL") {
-      const reason = shorten((e.policyReason ?? "").replace(/\s*\(Triggered by[^)]*\)\s*$/, ""), 140);
+      const reason = shorten(inertLine((e.policyReason ?? "").replace(/\s*\(Triggered by[^)]*\)\s*$/, "")), 140);
       const key = `${e.policyVerdict}|${reason}`;
       const i = interventionIndex.get(key);
       if (i === undefined) {
@@ -78,10 +76,14 @@ export function digestSession(sessionId: string, events: AuditEvent[], projectRo
       if (e.policyVerdict === "DENY") continue;
     }
 
+    // Counted past the DENY check: a blocked call did not use the capability.
+    const used = capabilityUsed(e.toolName, e.toolInput);
+    if (used && !digest.capabilitiesUsed.includes(used)) digest.capabilitiesUsed.push(used);
+
     const call = canonicalizeToolInput(e.toolName, e.toolInput);
     if (call.canonicalVerb === "file_edit" || call.canonicalVerb === "file_write") {
       for (const f of call.filePaths) {
-        const rel = toProjectPath(f, projectRoot);
+        const rel = inertLine(toProjectPath(f, projectRoot));
         if (!digest.filesChanged.includes(rel)) digest.filesChanged.push(rel);
       }
     } else if (call.canonicalVerb === "shell_execute" && call.command) {
