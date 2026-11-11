@@ -56,4 +56,3 @@ index 111..222 100644
   assert.equal(report.dependencyChanges[0].version, "^14.5.0");
   assert.ok(report.potentialRisks.some((r) => r.includes("dependency")));
 });
-

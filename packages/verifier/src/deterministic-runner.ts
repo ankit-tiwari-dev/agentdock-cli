@@ -96,4 +96,3 @@ function runShellCommand(command: string, cwd: string): { status: number; output
     };
   }
 }
-

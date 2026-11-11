@@ -107,4 +107,3 @@ new file mode 100644
   assert.equal(report.findings[0].verdict, "UNCHECKED");
   assert.ok(report.findings[0].rationale.includes("No matching code"));
 });
-

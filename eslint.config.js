@@ -11,7 +11,10 @@ export default tseslint.config(
     files: ["**/*.ts", "**/*.js"],
     languageOptions: { globals: { ...globals.node } },
     rules: {
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "none" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "none" },
+      ],
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
       eqeqeq: ["error", "always", { null: "ignore" }],
     },

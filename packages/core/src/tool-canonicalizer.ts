@@ -4,14 +4,7 @@
  */
 
 export type CanonicalToolVerb =
-  | "shell_execute"
-  | "file_write"
-  | "file_edit"
-  | "file_read"
-  | "file_list"
-  | "web_fetch"
-  | "subagent"
-  | "unknown";
+  "shell_execute" | "file_write" | "file_edit" | "file_read" | "file_list" | "web_fetch" | "subagent" | "unknown";
 
 export interface CanonicalToolInvocation {
   originalName: string;

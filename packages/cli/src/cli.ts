@@ -8,8 +8,18 @@ import { handleHookCommand } from "./commands/hook-cmd.ts";
 import { handleCoachCommand } from "./commands/coach-cmd.ts";
 import { handleBacktraceCommand } from "./commands/backtrace-cmd.ts";
 import { handleCommitCommand } from "./commands/commit-cmd.ts";
-import { handlePauseCommand, handlePoliciesCommand, handleResumeCommand, type CommandResult } from "./commands/policies-cmd.ts";
-import { handleCapabilitiesCommand, handleContextCommand, handleHandoffCommand, handleMemoryCommand } from "./commands/context-cmd.ts";
+import {
+  handlePauseCommand,
+  handlePoliciesCommand,
+  handleResumeCommand,
+  type CommandResult,
+} from "./commands/policies-cmd.ts";
+import {
+  handleCapabilitiesCommand,
+  handleContextCommand,
+  handleHandoffCommand,
+  handleMemoryCommand,
+} from "./commands/context-cmd.ts";
 import { calculateTurnCost } from "../../core/src/token-pricing.ts";
 
 function print(res: CommandResult): number {
@@ -178,4 +188,3 @@ CONTEXT COMMANDS:
     }
   }
 }
-

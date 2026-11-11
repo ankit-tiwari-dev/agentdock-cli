@@ -153,4 +153,3 @@ export function parseUnifiedDiff(rawDiff: string): FileDiff[] {
 
   return files;
 }
-

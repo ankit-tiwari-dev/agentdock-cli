@@ -71,10 +71,19 @@ test("catalog: everyday commands stay allowed", () => {
 });
 
 test("catalog: opt-in rules are off until enabled", () => {
-  const optIn = BUILTIN_RULES.filter((r) => r.enabledByDefault === false).map((r) => r.id).sort();
-  assert.deepEqual(optIn, ["RULE-GIT-COMMIT-ON-PROTECTED", "RULE-PKG-MANAGER", "RULE-READ-OUTSIDE-PROJECT", "STOP-REQUIRE-COMMIT", "STOP-REQUIRE-PUSH"]);
+  const optIn = BUILTIN_RULES.filter((r) => r.enabledByDefault === false)
+    .map((r) => r.id)
+    .sort();
+  assert.deepEqual(optIn, [
+    "RULE-GIT-COMMIT-ON-PROTECTED",
+    "RULE-PKG-MANAGER",
+    "RULE-READ-OUTSIDE-PROJECT",
+    "STOP-REQUIRE-COMMIT",
+    "STOP-REQUIRE-PUSH",
+  ]);
   const engine = new PolicyEngine();
-  for (const r of BUILTIN_RULES.filter((x) => x.enabledByDefault === false)) assert.equal(engine.resolveRule(r).enabled, false, r.id);
+  for (const r of BUILTIN_RULES.filter((x) => x.enabledByDefault === false))
+    assert.equal(engine.resolveRule(r).enabled, false, r.id);
 });
 
 test("regression: the agent cannot reconfigure the supervisor through `policies set` or a bin.ts path", () => {
@@ -99,7 +108,13 @@ test("regression: writes into a custom CTRLPLANE_HOME are denied, a look-alike s
   process.env.CTRLPLANE_HOME = home;
   try {
     const engine = new PolicyEngine();
-    const write = (file_path: string) => engine.evaluate({ event: "PreToolUse", toolName: "Write", toolInput: { file_path, content: "{}" }, projectRoot: ROOT });
+    const write = (file_path: string) =>
+      engine.evaluate({
+        event: "PreToolUse",
+        toolName: "Write",
+        toolInput: { file_path, content: "{}" },
+        projectRoot: ROOT,
+      });
     assert.equal(write(`${home}/policies.json`).decision, "DENY");
     assert.equal(write(`${home}-other/notes.txt`).decision, "ALLOW");
   } finally {
@@ -112,13 +127,27 @@ test("config: local beats project beats user, and params merge per key", () => {
   const dir = tempProject();
   try {
     mkdirSync(process.env.CTRLPLANE_HOME!, { recursive: true });
-    writeFileSync(join(process.env.CTRLPLANE_HOME!, "policies.json"), JSON.stringify({ rules: { "RULE-ASK-SUDO": { enabled: false }, "RULE-LARGE-FILE-WRITE": { params: { thresholdKb: 10 } } } }));
-    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify({ rules: { "RULE-ASK-SUDO": { enabled: true, mode: "observe" } } }));
-    writeFileSync(join(dir, ".ctrlplane", "policies.local.json"), JSON.stringify({ rules: { "RULE-ASK-SUDO": { mode: "enforce" } } }));
+    writeFileSync(
+      join(process.env.CTRLPLANE_HOME!, "policies.json"),
+      JSON.stringify({
+        rules: { "RULE-ASK-SUDO": { enabled: false }, "RULE-LARGE-FILE-WRITE": { params: { thresholdKb: 10 } } },
+      }),
+    );
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.json"),
+      JSON.stringify({ rules: { "RULE-ASK-SUDO": { enabled: true, mode: "observe" } } }),
+    );
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.local.json"),
+      JSON.stringify({ rules: { "RULE-ASK-SUDO": { mode: "enforce" } } }),
+    );
 
     const cfg = loadPolicyConfig(dir);
     assert.equal(cfg.sources.length, 3);
-    assert.deepEqual({ enabled: cfg.overrides["RULE-ASK-SUDO"].enabled, mode: cfg.overrides["RULE-ASK-SUDO"].mode }, { enabled: true, mode: "enforce" });
+    assert.deepEqual(
+      { enabled: cfg.overrides["RULE-ASK-SUDO"].enabled, mode: cfg.overrides["RULE-ASK-SUDO"].mode },
+      { enabled: true, mode: "enforce" },
+    );
     assert.equal(cfg.overrides["RULE-LARGE-FILE-WRITE"].params?.thresholdKb, 10);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -128,7 +157,10 @@ test("config: local beats project beats user, and params merge per key", () => {
 test("config: an unknown mode is rejected instead of silently ignored", () => {
   const dir = tempProject();
   try {
-    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify({ rules: { "RULE-ASK-SUDO": { mode: "warn" } } }));
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.json"),
+      JSON.stringify({ rules: { "RULE-ASK-SUDO": { mode: "warn" } } }),
+    );
     assert.throws(() => loadPolicyConfig(dir), /unknown mode 'warn'/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -138,7 +170,10 @@ test("config: an unknown mode is rejected instead of silently ignored", () => {
 test("observe mode logs what would have happened and allows the call", async () => {
   const dir = tempProject();
   try {
-    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify({ rules: { "RULE-ASK-SUDO": { mode: "observe" } } }));
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.json"),
+      JSON.stringify({ rules: { "RULE-ASK-SUDO": { mode: "observe" } } }),
+    );
     const { engine } = await buildProjectEngine(dir);
     const res = bash(engine, "sudo ls", dir);
     assert.equal(res.decision, "ALLOW");
@@ -152,7 +187,10 @@ test("observe mode logs what would have happened and allows the call", async () 
 test("always-on rules ignore disable and observe overrides", async () => {
   const dir = tempProject();
   try {
-    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify({ rules: { "RULE-BLOCK-AGENT-SELF-TAMPER": { enabled: false, mode: "observe" } } }));
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.json"),
+      JSON.stringify({ rules: { "RULE-BLOCK-AGENT-SELF-TAMPER": { enabled: false, mode: "observe" } } }),
+    );
     const { engine } = await buildProjectEngine(dir);
     assert.equal(bash(engine, "ctrlplane stop", dir).decision, "DENY");
   } finally {
@@ -168,7 +206,10 @@ test("custom rules load after the built-ins and cannot reuse a built-in id", asy
       `export const rules = [{ id: "TEAM-NO-YARN", name: "Use pnpm", event: "PreToolUse", targetTools: ["Bash"], action: "INSTRUCT", message: "Use pnpm.",
         check: (ctx) => ctx.subCommands.some((s) => /^yarn\\b/.test(s)) ? { message: "This repo uses pnpm." } : null }];`,
     );
-    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify({ customRulesFile: ".ctrlplane/rules.mjs" }));
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.json"),
+      JSON.stringify({ customRulesFile: ".ctrlplane/rules.mjs" }),
+    );
     const project = await buildProjectEngine(dir);
     assert.equal(project.customRules.length, 1);
     const res = bash(project.engine, "yarn add left-pad", dir);
@@ -179,7 +220,10 @@ test("custom rules load after the built-ins and cannot reuse a built-in id", asy
       join(dir, ".ctrlplane", "clash.mjs"),
       `export const rules = [{ id: "RULE-ASK-SUDO", name: "x", event: "PreToolUse", action: "ALLOW", message: "x" }];`,
     );
-    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify({ customRulesFile: ".ctrlplane/clash.mjs" }));
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.json"),
+      JSON.stringify({ customRulesFile: ".ctrlplane/clash.mjs" }),
+    );
     await assert.rejects(buildProjectEngine(dir), /collides with a built-in rule/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -204,7 +248,8 @@ test("pause: renewals cannot push the end past 8h from the first pause, and expi
 
 test("pause: paused engine skips normal rules but keeps always-on rules", () => {
   const engine = new PolicyEngine();
-  const run = (command: string) => engine.evaluate({ event: "PreToolUse", toolName: "Bash", toolInput: { command }, projectRoot: ROOT, paused: true });
+  const run = (command: string) =>
+    engine.evaluate({ event: "PreToolUse", toolName: "Bash", toolInput: { command }, projectRoot: ROOT, paused: true });
   assert.equal(run("sudo ls").decision, "ALLOW");
   assert.equal(run("ctrlplane stop").decision, "DENY");
 });
@@ -218,7 +263,8 @@ test("parseDuration reads compound durations and rejects junk", () => {
 
 test("stop gate: conflict markers in a changed file block the turn end, plan mode is exempt", () => {
   const dir = tempProject();
-  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@localhost", ...args], { cwd: dir, stdio: "ignore" });
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@localhost", ...args], { cwd: dir, stdio: "ignore" });
   try {
     git("init", "-q");
     writeFileSync(join(dir, "a.txt"), "one\n");

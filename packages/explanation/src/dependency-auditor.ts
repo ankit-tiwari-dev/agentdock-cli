@@ -5,9 +5,7 @@ export function auditDependencyChanges(rawDiff: string): DependencyDelta[] {
   const fileDiffs = parseUnifiedDiff(rawDiff);
   const deltas: DependencyDelta[] = [];
 
-  const pkgDiff = fileDiffs.find(
-    (f) => f.newPath.endsWith("package.json") || f.oldPath.endsWith("package.json")
-  );
+  const pkgDiff = fileDiffs.find((f) => f.newPath.endsWith("package.json") || f.oldPath.endsWith("package.json"));
   if (!pkgDiff) return deltas;
 
   for (const hunk of pkgDiff.hunks) {
@@ -36,4 +34,3 @@ export function auditDependencyChanges(rawDiff: string): DependencyDelta[] {
 
   return deltas;
 }
-

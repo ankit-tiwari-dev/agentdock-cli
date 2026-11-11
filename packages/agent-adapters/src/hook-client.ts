@@ -18,7 +18,7 @@ export const DAEMON_UNAVAILABLE = "daemon-unavailable";
  */
 export async function dispatchHook(
   payload: AgentHookPayload,
-  options?: HookClientOptions
+  options?: HookClientOptions,
 ): Promise<HookVerdictResponse> {
   const projectPath = options?.projectPath ?? findProjectRoot(payload.cwd || process.cwd()) ?? process.cwd();
   const timeoutMs = options?.timeoutMs ?? 1500;
@@ -120,7 +120,6 @@ export async function dispatchHook(
     });
   });
 }
-
 
 function connectOptions(ipcTarget: string): { path: string } | { host: string; port: number } {
   if (ipcTarget.startsWith(WINDOWS_PIPE_PREFIX) || ipcTarget.startsWith("/")) return { path: ipcTarget };

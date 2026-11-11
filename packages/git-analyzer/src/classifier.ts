@@ -1,10 +1,5 @@
 export type FileClassification =
-  | "TEST_FILE"
-  | "CTRLPLANE_FILE"
-  | "AGENT_SETTINGS_FILE"
-  | "CONFIG_FILE"
-  | "SENSITIVE_FILE"
-  | "SOURCE_FILE";
+  "TEST_FILE" | "CTRLPLANE_FILE" | "AGENT_SETTINGS_FILE" | "CONFIG_FILE" | "SENSITIVE_FILE" | "SOURCE_FILE";
 
 export function isAgentSettingsFile(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/").toLowerCase();
@@ -80,4 +75,3 @@ export function classifyFile(filePath: string): FileClassification {
   if (isConfigFile(filePath)) return "CONFIG_FILE";
   return "SOURCE_FILE";
 }
-

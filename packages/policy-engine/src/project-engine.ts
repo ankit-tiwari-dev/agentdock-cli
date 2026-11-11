@@ -26,6 +26,9 @@ export async function buildProjectEngine(projectRoot: string): Promise<ProjectEn
   if (clash) throw new Error(`Custom rule id '${clash.id}' collides with a built-in rule; pick another id.`);
 
   const newBreaker = () => new CircuitBreaker(config.loopBreaker);
-  const engine = new PolicyEngine([...BUILTIN_RULES, ...customRules], { overrides: config.overrides, breaker: newBreaker() });
+  const engine = new PolicyEngine([...BUILTIN_RULES, ...customRules], {
+    overrides: config.overrides,
+    breaker: newBreaker(),
+  });
   return { engine, config, customRules, stamp, newBreaker, isPaused: () => readPause(projectRoot) !== null };
 }

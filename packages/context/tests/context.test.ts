@@ -28,19 +28,38 @@ function tempProject(): string {
   return dir;
 }
 
-function payload(hookEventName: AgentHookPayload["hookEventName"], extra: Partial<AgentHookPayload> = {}): AgentHookPayload {
+function payload(
+  hookEventName: AgentHookPayload["hookEventName"],
+  extra: Partial<AgentHookPayload> = {},
+): AgentHookPayload {
   return { hookEventName, cwd: "/", sessionId: "s1", ...extra };
 }
 
 let seq = 0;
 function addEvent(storage: StorageEngine, sessionId: string, e: Partial<AuditEvent>): void {
-  storage.ensureSession({ id: sessionId, agentType: "claude-code", projectPath: "/p", gitBranch: "main", baseCommitSha: "0", status: "active", startedAt: 1 });
+  storage.ensureSession({
+    id: sessionId,
+    agentType: "claude-code",
+    projectPath: "/p",
+    gitBranch: "main",
+    baseCommitSha: "0",
+    status: "active",
+    startedAt: 1,
+  });
   seq++;
-  storage.insertEvent({ id: `e${seq}`, sessionId, sequenceNum: seq, eventType: "pre_tool", createdAt: 1_700_000_000_000 + seq, ...e } as AuditEvent);
+  storage.insertEvent({
+    id: `e${seq}`,
+    sessionId,
+    sequenceNum: seq,
+    eventType: "pre_tool",
+    createdAt: 1_700_000_000_000 + seq,
+    ...e,
+  } as AuditEvent);
 }
 
 test("cleanPrompt keeps the developer's words and drops harness blocks", () => {
-  const raw = "<system-reminder>\nsecret plan\n</system-reminder>  Fix the   flaky\nlogin test <command-name>/review</command-name>";
+  const raw =
+    "<system-reminder>\nsecret plan\n</system-reminder>  Fix the   flaky\nlogin test <command-name>/review</command-name>";
   assert.equal(cleanPrompt(raw), "Fix the flaky login test");
   assert.equal(cleanPrompt("<system-reminder>only noise</system-reminder>"), "");
   assert.equal(cleanPrompt("x".repeat(50), 10), `${"x".repeat(9)}…`);
@@ -51,11 +70,24 @@ test("digest counts tool calls once, lists changed files relative to the project
   const storage = new StorageEngine(":memory:", join(dir, "blobs"));
   try {
     addEvent(storage, "s1", { eventType: "user_prompt", toolInput: { prompt: "Add rate limiting" } });
-    addEvent(storage, "s1", { toolName: "Edit", toolInput: { file_path: join(dir, "src", "a.ts") }, policyVerdict: "ALLOW" });
-    addEvent(storage, "s1", { eventType: "post_tool", toolName: "Edit", toolInput: { file_path: join(dir, "src", "a.ts") } });
+    addEvent(storage, "s1", {
+      toolName: "Edit",
+      toolInput: { file_path: join(dir, "src", "a.ts") },
+      policyVerdict: "ALLOW",
+    });
+    addEvent(storage, "s1", {
+      eventType: "post_tool",
+      toolName: "Edit",
+      toolInput: { file_path: join(dir, "src", "a.ts") },
+    });
     addEvent(storage, "s1", { toolName: "Bash", toolInput: { command: "npm test" }, policyVerdict: "ALLOW" });
     addEvent(storage, "s1", { toolName: "Bash", toolInput: { command: "npm  test" }, policyVerdict: "ALLOW" });
-    addEvent(storage, "s1", { toolName: "Write", toolInput: { file_path: join(dir, ".env") }, policyVerdict: "DENY", policyReason: "Secret file (Triggered by command: 'x')" });
+    addEvent(storage, "s1", {
+      toolName: "Write",
+      toolInput: { file_path: join(dir, ".env") },
+      policyVerdict: "DENY",
+      policyReason: "Secret file (Triggered by command: 'x')",
+    });
 
     const d = digestSession("s1", storage.listEventsForSession("s1"), dir);
     assert.equal(d.toolCalls, 4);
@@ -65,8 +97,16 @@ test("digest counts tool calls once, lists changed files relative to the project
     assert.deepEqual(d.interventions, [{ reason: "Secret file", decision: "blocked", count: 1 }]);
     assert.deepEqual(d.capabilitiesUsed, []);
 
-    addEvent(storage, "s1", { toolName: "mcp__github__create_issue", toolInput: { title: "x" }, policyVerdict: "ALLOW" });
-    addEvent(storage, "s1", { toolName: "mcp__claude_ai_Gmail__search_threads", toolInput: {}, policyVerdict: "ALLOW" });
+    addEvent(storage, "s1", {
+      toolName: "mcp__github__create_issue",
+      toolInput: { title: "x" },
+      policyVerdict: "ALLOW",
+    });
+    addEvent(storage, "s1", {
+      toolName: "mcp__claude_ai_Gmail__search_threads",
+      toolInput: {},
+      policyVerdict: "ALLOW",
+    });
     addEvent(storage, "s1", { toolName: "Skill", toolInput: { skill: "deploy" }, policyVerdict: "ALLOW" });
     addEvent(storage, "s1", { toolName: "Agent", toolInput: { subagent_type: "reviewer" }, policyVerdict: "ALLOW" });
     addEvent(storage, "s1", { toolName: "mcp__github__list_prs", toolInput: {}, policyVerdict: "ALLOW" });
@@ -82,7 +122,12 @@ test("aiSummarize strips a preamble and falls back to null on failure, empty or 
   assert.equal(await aiSummarize("d", async () => "Here is a summary:\n- did X"), "- did X");
   assert.equal(await aiSummarize("d", async () => "   "), null);
   assert.equal(await aiSummarize("d", async () => "Error: not logged in"), null);
-  assert.equal(await aiSummarize("d", async () => { throw new Error("ENOENT"); }), null);
+  assert.equal(
+    await aiSummarize("d", async () => {
+      throw new Error("ENOENT");
+    }),
+    null,
+  );
 });
 
 test("recorder: intents are cleaned, Stop keeps one rolling summary per session, AI summary replaces it only when enabled", async () => {
@@ -90,10 +135,20 @@ test("recorder: intents are cleaned, Stop keeps one rolling summary per session,
   const storage = new StorageEngine(auditDbPath(dir));
   try {
     let calls = 0;
-    const recorder = new ContextRecorder(storage, dir, { aiSummaries: true, summaryRunner: async () => { calls++; return "- model summary"; }, home: dir });
+    const recorder = new ContextRecorder(storage, dir, {
+      aiSummaries: true,
+      summaryRunner: async () => {
+        calls++;
+        return "- model summary";
+      },
+      home: dir,
+    });
     recorder.record(payload("UserPromptSubmit", { prompt: "<system-reminder>x</system-reminder>Refactor auth" }), "s1");
     recorder.record(payload("UserPromptSubmit", { prompt: "<system-reminder>only</system-reminder>" }), "s1");
-    assert.deepEqual(storage.listContextEntries("intent").map((e) => e.body), ["Refactor auth"]);
+    assert.deepEqual(
+      storage.listContextEntries("intent").map((e) => e.body),
+      ["Refactor auth"],
+    );
 
     addEvent(storage, "s1", { toolName: "Bash", toolInput: { command: "npm test" }, policyVerdict: "ALLOW" });
     recorder.record(payload("Stop"), "s1");
@@ -108,7 +163,15 @@ test("recorder: intents are cleaned, Stop keeps one rolling summary per session,
     assert.equal(compact.length, 1);
     assert.equal(compact[0].body, "- model summary");
 
-    const offline = new ContextRecorder(storage, dir, { aiSummaries: true, allowAsync: false, summaryRunner: async () => { calls++; return "x"; }, home: dir });
+    const offline = new ContextRecorder(storage, dir, {
+      aiSummaries: true,
+      allowAsync: false,
+      summaryRunner: async () => {
+        calls++;
+        return "x";
+      },
+      home: dir,
+    });
     offline.record(payload("SessionEnd"), "s1");
     await offline.drain();
     assert.equal(calls, 1, "the hook process never starts the model");
@@ -128,7 +191,12 @@ test("capabilities: every source is found with its origin, and only a change cre
     mkdirSync(join(home, ".claude", "agents"), { recursive: true });
     writeFileSync(join(home, ".claude", "agents", "reviewer.md"), "x");
     writeFileSync(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { github: { command: "x" } } }));
-    writeFileSync(join(dir, ".claude", "settings.local.json"), JSON.stringify({ hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "ctrlplane hook PreToolUse" }] }] } }));
+    writeFileSync(
+      join(dir, ".claude", "settings.local.json"),
+      JSON.stringify({
+        hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "ctrlplane hook PreToolUse" }] }] },
+      }),
+    );
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(join(home, ".codex", "config.toml"), '[mcp_servers.docs]\ncommand = "x"\n');
 
@@ -149,7 +217,10 @@ test("capabilities: every source is found with its origin, and only a change cre
     writeFileSync(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { github: {}, "shady-tools": {} } }));
     recorder.record(payload("SessionStart"), "s3");
     const latest = storage.listContextEntries("capabilities", { limit: 1 })[0];
-    assert.deepEqual((latest.meta?.added as { name: string }[]).map((c) => c.name), ["shady-tools"]);
+    assert.deepEqual(
+      (latest.meta?.added as { name: string }[]).map((c) => c.name),
+      ["shady-tools"],
+    );
     assert.match(buildContextPack({ projectRoot: dir, storage }) ?? "", /mcp shady-tools \(from \.mcp\.json\)/);
     assert.deepEqual(diffCapabilities(caps, caps), { added: [], removed: [] });
   } finally {
@@ -168,16 +239,31 @@ test("pack: approved spec only, compaction prefers this session's capture, newer
     const spec = new SpecManager(dir);
     spec.init("Rate limiting", "Limit logins");
     storage.addMemory("Use pnpm, not npm", { pinned: true });
-    assert.doesNotMatch(buildContextPack({ projectRoot: dir, storage, now }) ?? "", /## Spec/, "draft spec is not injected");
+    assert.doesNotMatch(
+      buildContextPack({ projectRoot: dir, storage, now }) ?? "",
+      /## Spec/,
+      "draft spec is not injected",
+    );
     spec.approve("dev");
     assert.match(buildContextPack({ projectRoot: dir, storage, now }) ?? "", /## Spec: .* \[approved\]/);
 
-    storage.replaceContextEntry({ sessionId: "old", kind: "summary", body: "OLD SESSION SUMMARY", createdAt: now - 3600_000 });
-    storage.replaceContextEntry({ sessionId: "cur", kind: "compact", body: "BEFORE COMPACTION", createdAt: now - 60_000 });
+    storage.replaceContextEntry({
+      sessionId: "old",
+      kind: "summary",
+      body: "OLD SESSION SUMMARY",
+      createdAt: now - 3600_000,
+    });
+    storage.replaceContextEntry({
+      sessionId: "cur",
+      kind: "compact",
+      body: "BEFORE COMPACTION",
+      createdAt: now - 60_000,
+    });
     storage.addContextEntry({ sessionId: "old", kind: "intent", body: "old request", createdAt: now - 3600_000 });
     storage.addContextEntry({ sessionId: "older", kind: "intent", body: "older request", createdAt: now - 7200_000 });
 
-    const afterCompact = buildContextPack({ projectRoot: dir, storage, sessionId: "cur", source: "compact", now }) ?? "";
+    const afterCompact =
+      buildContextPack({ projectRoot: dir, storage, sessionId: "cur", source: "compact", now }) ?? "";
     assert.match(afterCompact, /Before this conversation was compacted[\s\S]*BEFORE COMPACTION/);
 
     const fresh = buildContextPack({ projectRoot: dir, storage, sessionId: "new", now }) ?? "";
@@ -187,8 +273,15 @@ test("pack: approved spec only, compaction prefers this session's capture, newer
     assert.match(fresh, /\[pinned\] Use pnpm, not npm/);
 
     storage.addContextEntry({ kind: "handoff", body: "HANDOFF NOTE", createdAt: now - 30_000 });
-    assert.match(buildContextPack({ projectRoot: dir, storage, sessionId: "new", now }) ?? "", /Handoff from the previous session[\s\S]*HANDOFF NOTE/);
-    assert.match(buildContextPack({ projectRoot: dir, storage, sessionId: "new", now: now + 8 * 24 * 3600_000 }) ?? "", /OLD SESSION SUMMARY/, "a week-old handoff is stale");
+    assert.match(
+      buildContextPack({ projectRoot: dir, storage, sessionId: "new", now }) ?? "",
+      /Handoff from the previous session[\s\S]*HANDOFF NOTE/,
+    );
+    assert.match(
+      buildContextPack({ projectRoot: dir, storage, sessionId: "new", now: now + 8 * 24 * 3600_000 }) ?? "",
+      /OLD SESSION SUMMARY/,
+      "a week-old handoff is stale",
+    );
 
     for (let i = 0; i < 40; i++) storage.addMemory(`note ${i} ${"x".repeat(200)}`);
     const capped = buildContextPack({ projectRoot: dir, storage, now, maxChars: 1500 }) ?? "";
@@ -205,7 +298,10 @@ test("memory: punctuation cannot break the search, deletes leave the index, secr
   try {
     const a = storage.addMemory("Run migrations with make db-migrate before tests", { tags: ["db"] });
     storage.addMemory("Frontend uses pnpm workspaces");
-    assert.deepEqual(storage.searchMemory(`migration "don't" (break) AND OR *`).map((n) => n.id), [a]);
+    assert.deepEqual(
+      storage.searchMemory(`migration "don't" (break) AND OR *`).map((n) => n.id),
+      [a],
+    );
     assert.deepEqual(storage.searchMemory("!!!"), []);
     assert.equal(storage.deleteMemory(a), true);
     assert.deepEqual(storage.searchMemory("migrations"), []);
@@ -238,11 +334,19 @@ test("hook without a daemon: SessionStart returns the pack as additionalContext 
     seed.close();
 
     const provider = (p: AgentHookPayload, root: string) => contextForHook(p, root);
-    const prompt = await runHook("UserPromptSubmit", JSON.stringify({ session_id: "s9", cwd: dir, prompt: "Ship the retry fix" }), { cwd: dir, timeoutMs: 300, contextProvider: provider });
+    const prompt = await runHook(
+      "UserPromptSubmit",
+      JSON.stringify({ session_id: "s9", cwd: dir, prompt: "Ship the retry fix" }),
+      { cwd: dir, timeoutMs: 300, contextProvider: provider },
+    );
     assert.equal(prompt.exitCode, 0);
     assert.equal(prompt.stdout, undefined, "no pack on ordinary prompts");
 
-    const out = await runHook("SessionStart", JSON.stringify({ session_id: "s10", cwd: dir, source: "startup" }), { cwd: dir, timeoutMs: 300, contextProvider: provider });
+    const out = await runHook("SessionStart", JSON.stringify({ session_id: "s10", cwd: dir, source: "startup" }), {
+      cwd: dir,
+      timeoutMs: 300,
+      contextProvider: provider,
+    });
     const ctx = JSON.parse(out.stdout ?? "{}").hookSpecificOutput?.additionalContext ?? "";
     assert.match(ctx, /Never push to main/);
     assert.match(ctx, /Ship the retry fix/);
@@ -254,7 +358,11 @@ test("hook without a daemon: SessionStart returns the pack as additionalContext 
 test("the summariser's nested claude process is never supervised or recorded", async () => {
   process.env.CTRLPLANE_NESTED = "1";
   try {
-    const out = await runHook("PreToolUse", JSON.stringify({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }), { timeoutMs: 300 });
+    const out = await runHook(
+      "PreToolUse",
+      JSON.stringify({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }),
+      { timeoutMs: 300 },
+    );
     assert.deepEqual(out, { exitCode: 0 });
   } finally {
     delete process.env.CTRLPLANE_NESTED;
@@ -267,6 +375,11 @@ test("agents cannot write or delete project memory", () => {
     const res = engine.evaluate({ event: "PreToolUse", toolName: "Bash", toolInput: { command }, projectRoot: "/p" });
     assert.equal(res.decision, "DENY", command);
   }
-  const read = engine.evaluate({ event: "PreToolUse", toolName: "Bash", toolInput: { command: "ctrlplane memory search retry" }, projectRoot: "/p" });
+  const read = engine.evaluate({
+    event: "PreToolUse",
+    toolName: "Bash",
+    toolInput: { command: "ctrlplane memory search retry" },
+    projectRoot: "/p",
+  });
   assert.equal(read.decision, "ALLOW");
 });

@@ -1,9 +1,6 @@
 import { ExplanationEngine } from "../../../explanation/src/index.ts";
 
-export function handleExplainCommand(options?: {
-  diffUnified?: string;
-  quiz?: boolean;
-}): string {
+export function handleExplainCommand(options?: { diffUnified?: string; quiz?: boolean }): string {
   const engine = new ExplanationEngine();
   const diff = options?.diffUnified ?? "";
 
@@ -55,4 +52,3 @@ export function handleExplainCommand(options?: {
   lines.push("================================================================================");
   return lines.join("\n");
 }
-

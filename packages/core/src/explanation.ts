@@ -35,4 +35,3 @@ export interface ExplanationReport {
   comprehensionQuestions?: ComprehensionQuestion[];
   generatedAt: number;
 }
-

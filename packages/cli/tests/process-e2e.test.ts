@@ -77,4 +77,3 @@ test("regression: status reports a dead daemon as OFFLINE and removes the stale 
     rmSync(dir, { recursive: true, force: true });
   }
 });
-

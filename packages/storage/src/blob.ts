@@ -55,4 +55,3 @@ export class BlobStore {
     return existsSync(join(this.baseDir, `${sha256}.gz`));
   }
 }
-

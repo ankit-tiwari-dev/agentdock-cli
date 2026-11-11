@@ -120,4 +120,3 @@ export function redactObject<T>(obj: T): T {
   }
   return obj;
 }
-

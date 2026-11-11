@@ -1,8 +1,4 @@
-import type {
-  VerificationReport,
-  OverallStatus,
-  Specification,
-} from "../../core/src/index.ts";
+import type { VerificationReport, OverallStatus, Specification } from "../../core/src/index.ts";
 import { runDeterministicChecks } from "./deterministic-runner.ts";
 import { auditCriteriaAgainstEvidence } from "./semantic-auditor.ts";
 import { formatVerificationReportText } from "./report-generator.ts";
@@ -55,8 +51,8 @@ export class VerifierEngine {
       overallStatus === "PASSED"
         ? "All deterministic checks passed and all acceptance criteria verified with concrete code evidence."
         : overallStatus === "NEEDS_ATTENTION"
-        ? "Deterministic checks passed, but some criteria remain UNCHECKED. Review code before merging."
-        : "Verification FAILED: Broken tests, compiler errors, or test assertion tampering detected.";
+          ? "Deterministic checks passed, but some criteria remain UNCHECKED. Review code before merging."
+          : "Verification FAILED: Broken tests, compiler errors, or test assertion tampering detected.";
 
     const report: VerificationReport = {
       id: `rep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -75,4 +71,3 @@ export class VerifierEngine {
     return { report, formattedText };
   }
 }
-

@@ -18,7 +18,7 @@ test("Prompt Coach - detects frustration phrases and advises pasting logs", () =
 
 test("Prompt Coach - rates detailed test-grounded prompts as EXCELLENT", () => {
   const result = evaluatePromptQuality(
-    "Please update src/auth.ts to check token expiration. Verify with `npm test tests/auth.test.ts` to ensure no regressions."
+    "Please update src/auth.ts to check token expiration. Verify with `npm test tests/auth.test.ts` to ensure no regressions.",
   );
   assert.equal(result.rating, "EXCELLENT");
   assert.ok(result.score >= 80);
@@ -33,7 +33,9 @@ test("Prompt Coach - returns the trimmed prompt unchanged when no rewrite is nee
 });
 
 test("Prompt Coach - a prompt with no file, error or expected outcome is flagged as unanchored", () => {
-  const result = evaluatePromptQuality("Can you make the dashboard look nicer and feel faster for everyone who uses it");
+  const result = evaluatePromptQuality(
+    "Can you make the dashboard look nicer and feel faster for everyone who uses it",
+  );
   assert.ok(result.detectedIssues.some((i) => i.includes("No concrete anchor")));
   assert.ok(result.detectedIssues.some((i) => i.includes("Vague references")));
   assert.ok(result.rating === "NEEDS_IMPROVEMENT" || result.rating === "HIGH_RISK");
@@ -50,7 +52,7 @@ test("Prompt Coach - an unanchored prompt is never rated better than NEEDS_IMPRO
 
 test("Prompt Coach - frustration that comes with the actual error is not flagged", () => {
   const result = evaluatePromptQuality(
-    "Still failing: TypeError: Cannot read properties of undefined (reading 'id') at getUser (src/user.ts:42:7)"
+    "Still failing: TypeError: Cannot read properties of undefined (reading 'id') at getUser (src/user.ts:42:7)",
   );
   assert.ok(!result.detectedIssues.some((i) => i.includes("Frustration phrasing")));
 });
@@ -63,7 +65,7 @@ test("Prompt Coach - 'you broke it' without evidence is frustration", () => {
 
 test("Prompt Coach - several unrelated tasks in one prompt are advised to be split", () => {
   const result = evaluatePromptQuality(
-    "Fix the login bug in src/auth.ts, and also add dark mode to the settings page. Then rename the User model to Account and update the README."
+    "Fix the login bug in src/auth.ts, and also add dark mode to the settings page. Then rename the User model to Account and update the README.",
   );
   assert.ok(result.detectedIssues.some((i) => i.includes("Several separate tasks")));
   assert.ok(result.recommendations.some((r) => r.includes("Split")));
@@ -71,14 +73,14 @@ test("Prompt Coach - several unrelated tasks in one prompt are advised to be spl
 
 test("Prompt Coach - a single task with a verification step is not treated as several tasks", () => {
   const result = evaluatePromptQuality(
-    "Fix the null check in src/user.ts so that getUser returns undefined for a missing id, then run `npm test`."
+    "Fix the null check in src/user.ts so that getUser returns undefined for a missing id, then run `npm test`.",
   );
   assert.ok(!result.detectedIssues.some((i) => i.includes("Several separate tasks")));
 });
 
 test("Prompt Coach - a longer prompt with no way to verify gets a verification tip", () => {
   const result = evaluatePromptQuality(
-    "Please refactor the payment retry logic in src/billing/retry.ts so that it uses exponential backoff with jitter."
+    "Please refactor the payment retry logic in src/billing/retry.ts so that it uses exponential backoff with jitter.",
   );
   assert.ok(result.detectedIssues.some((i) => i.includes("No way to verify")));
   assert.ok(result.recommendations.some((r) => r.startsWith("Tip:")));

@@ -98,4 +98,3 @@ export function analyzeTestDiff(diff: FileDiff): TestTamperAnalysis {
       : "Existing test file modified without weakening assertions.",
   };
 }
-

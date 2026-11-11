@@ -49,45 +49,45 @@ test("SupervisorDaemon starts, serves IPC, and enforces policy", async () => {
 
   const endpoint = await daemon.start();
   try {
-  assert.ok(endpoint.path || endpoint.port);
+    assert.ok(endpoint.path || endpoint.port);
 
-  // Seed active session in storage
-  const session = createSession({
-    agentType: "claude-code",
-    projectPath: testProjectDir,
-  });
-  daemon.getStorage().insertSession(session);
+    // Seed active session in storage
+    const session = createSession({
+      agentType: "claude-code",
+      projectPath: testProjectDir,
+    });
+    daemon.getStorage().insertSession(session);
 
-  // 1. Safe tool call -> ALLOW (Exit 0)
-  const safeRes = await sendIPCMessage(endpoint, {
-    hookEventName: "PreToolUse",
-    sessionId: session.id,
-    cwd: testProjectDir,
-    toolName: "Bash",
-    toolInput: { command: "npm test" },
-  });
+    // 1. Safe tool call -> ALLOW (Exit 0)
+    const safeRes = await sendIPCMessage(endpoint, {
+      hookEventName: "PreToolUse",
+      sessionId: session.id,
+      cwd: testProjectDir,
+      toolName: "Bash",
+      toolInput: { command: "npm test" },
+    });
 
-  assert.equal(safeRes.decision, "ALLOW");
-  assert.equal(safeRes.exitCode, 0);
-  // A loose bound: CI runners are shared and slow; the engine's own speed is covered by the policy-engine perf test.
-  assert.ok(safeRes.latencyMs < 250, `latency ${safeRes.latencyMs}ms`);
+    assert.equal(safeRes.decision, "ALLOW");
+    assert.equal(safeRes.exitCode, 0);
+    // A loose bound: CI runners are shared and slow; the engine's own speed is covered by the policy-engine perf test.
+    assert.ok(safeRes.latencyMs < 250, `latency ${safeRes.latencyMs}ms`);
 
-  // 2. Dangerous tool call -> DENY (Exit 2)
-  const dangerRes = await sendIPCMessage(endpoint, {
-    hookEventName: "PreToolUse",
-    sessionId: session.id,
-    cwd: testProjectDir,
-    toolName: "Bash",
-    toolInput: { command: "rm -rf /critical/data" },
-  });
+    // 2. Dangerous tool call -> DENY (Exit 2)
+    const dangerRes = await sendIPCMessage(endpoint, {
+      hookEventName: "PreToolUse",
+      sessionId: session.id,
+      cwd: testProjectDir,
+      toolName: "Bash",
+      toolInput: { command: "rm -rf /critical/data" },
+    });
 
-  assert.equal(dangerRes.decision, "DENY");
-  assert.equal(dangerRes.exitCode, 2);
-  assert.ok(dangerRes.stderrMessage?.includes("Destructive command blocked"));
+    assert.equal(dangerRes.decision, "DENY");
+    assert.equal(dangerRes.exitCode, 2);
+    assert.ok(dangerRes.stderrMessage?.includes("Destructive command blocked"));
 
-  // Verify events persisted to storage
-  const events = daemon.getStorage().listEventsForSession(session.id);
-  assert.equal(events.length, 2);
+    // Verify events persisted to storage
+    const events = daemon.getStorage().listEventsForSession(session.id);
+    assert.equal(events.length, 2);
   } finally {
     // A failed assertion must still close the IPC server, or the test process never exits.
     await daemon.stop();

@@ -1,8 +1,4 @@
-import type {
-  AcceptanceCriterion,
-  CriterionFinding,
-  CodeEvidence,
-} from "../../core/src/index.ts";
+import type { AcceptanceCriterion, CriterionFinding, CodeEvidence } from "../../core/src/index.ts";
 import { parseUnifiedDiff, type FileDiff } from "../../git-analyzer/src/index.ts";
 
 export interface SemanticAuditContext {
@@ -62,10 +58,7 @@ export function auditCriteriaAgainstEvidence(context: SemanticAuditContext): Cri
   return findings;
 }
 
-function findCodeEvidenceForCriterion(
-  criterion: AcceptanceCriterion,
-  fileDiffs: FileDiff[]
-): CodeEvidence | undefined {
+function findCodeEvidenceForCriterion(criterion: AcceptanceCriterion, fileDiffs: FileDiff[]): CodeEvidence | undefined {
   const keywords = criterion.description
     .toLowerCase()
     .replace(/[^a-z0-9_\-\s]/g, "")
@@ -80,7 +73,7 @@ function findCodeEvidenceForCriterion(
       for (const line of hunk.lines) {
         if (line.type === "add") {
           const contentLower = line.content.toLowerCase();
-          
+
           // Direct match if line defines function/class with keyword
           for (const kw of keywords) {
             if (

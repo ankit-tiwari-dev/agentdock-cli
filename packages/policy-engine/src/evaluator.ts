@@ -88,7 +88,8 @@ export class PolicyEngine {
   /** Effective on/off, mode and params for a rule after config overrides. */
   public resolveRule(rule: PolicyRule): { enabled: boolean; mode: PolicyMode; params: Record<string, unknown> } {
     const o = this.overrides[rule.id] ?? {};
-    if (rule.alwaysOn) return { enabled: true, mode: "enforce", params: { ...(rule.params ?? {}), ...(o.params ?? {}) } };
+    if (rule.alwaysOn)
+      return { enabled: true, mode: "enforce", params: { ...(rule.params ?? {}), ...(o.params ?? {}) } };
     const enabled = o.enabled ?? rule.enabledByDefault ?? true;
     return { enabled, mode: o.mode ?? rule.mode ?? "enforce", params: { ...(rule.params ?? {}), ...(o.params ?? {}) } };
   }

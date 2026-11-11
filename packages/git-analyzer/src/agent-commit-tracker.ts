@@ -24,10 +24,22 @@ const SUBJECT_PREFIX = "[AgentDock]";
 const MAX_SUBJECT_LENGTH = 72;
 const PATH_MASK = "[PATH]";
 
-const POSIX_SENSITIVE_ROOTS = new Set(["home", "Users", "root", "etc", "var", "usr", "opt", "tmp", "mnt", "private", "Volumes"]);
+const POSIX_SENSITIVE_ROOTS = new Set([
+  "home",
+  "Users",
+  "root",
+  "etc",
+  "var",
+  "usr",
+  "opt",
+  "tmp",
+  "mnt",
+  "private",
+  "Volumes",
+]);
 const HOME_ROOTS = new Set(["home", "users"]);
-const LEADING_WRAPPERS = new Set(["(", "[", "{", "<", "\"", "'", "`"]);
-const TRAILING_PUNCTUATION = new Set([".", ",", ";", ":", "!", "?", ")", "]", "}", ">", "\"", "'", "`"]);
+const LEADING_WRAPPERS = new Set(["(", "[", "{", "<", '"', "'", "`"]);
+const TRAILING_PUNCTUATION = new Set([".", ",", ";", ":", "!", "?", ")", "]", "}", ">", '"', "'", "`"]);
 
 interface AbsolutePath {
   segments: string[];
@@ -154,7 +166,10 @@ function parseNumber(value: string): number | undefined {
 }
 
 function parseList(value: string): string[] {
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export function parseAgentCommitTrailers(commitBody: string): Partial<AgentCommitMetadata> | null {
@@ -225,7 +240,11 @@ export function commitAgentTurn(params: {
     summary: params.summary,
     metadata: params.metadata,
   });
-  const options = { cwd: params.cwd, encoding: "utf8" as const, stdio: ["pipe", "pipe", "pipe"] as ["pipe", "pipe", "pipe"] };
+  const options = {
+    cwd: params.cwd,
+    encoding: "utf8" as const,
+    stdio: ["pipe", "pipe", "pipe"] as ["pipe", "pipe", "pipe"],
+  };
 
   execFileSync("git", ["add", "--all"], options);
   // The default cleanup mode drops lines starting with "#", which would delete the metadata header.

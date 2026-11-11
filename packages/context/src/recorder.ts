@@ -62,13 +62,23 @@ export class ContextRecorder {
     const digest = digestSession(sessionId, this.storage.listEventsForSession(sessionId), this.projectRoot);
     if (isEmptyDigest(digest)) return;
     const text = renderDigest(digest);
-    this.storage.replaceContextEntry({ sessionId, kind, body: text, meta: { ai: false, toolCalls: digest.toolCalls, filesChanged: digest.filesChanged } });
+    this.storage.replaceContextEntry({
+      sessionId,
+      kind,
+      body: text,
+      meta: { ai: false, toolCalls: digest.toolCalls, filesChanged: digest.filesChanged },
+    });
 
     if (!withAi || !this.options.aiSummaries || this.options.allowAsync === false) return;
     const job = aiSummarize(text, this.options.summaryRunner).then((ai) => {
       if (!ai) return;
       try {
-        this.storage.replaceContextEntry({ sessionId, kind, body: ai, meta: { ai: true, toolCalls: digest.toolCalls, filesChanged: digest.filesChanged } });
+        this.storage.replaceContextEntry({
+          sessionId,
+          kind,
+          body: ai,
+          meta: { ai: true, toolCalls: digest.toolCalls, filesChanged: digest.filesChanged },
+        });
       } catch {
         // Store closed while the model was answering.
       }
@@ -84,6 +94,11 @@ export class ContextRecorder {
     const previous = (last?.meta?.items as Capability[] | undefined) ?? null;
     const { added, removed } = previous ? diffCapabilities(previous, current) : { added: [], removed: [] };
     if (previous && !added.length && !removed.length) return;
-    this.storage.addContextEntry({ sessionId, kind: "capabilities", body: renderCapabilities(current), meta: { items: current, added, removed, first: !previous } });
+    this.storage.addContextEntry({
+      sessionId,
+      kind: "capabilities",
+      body: renderCapabilities(current),
+      meta: { items: current, added, removed, first: !previous },
+    });
   }
 }

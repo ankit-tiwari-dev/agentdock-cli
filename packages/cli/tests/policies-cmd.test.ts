@@ -15,7 +15,11 @@ function tempProject(): string {
 test("policies test exits 0 when the expectation holds and 1 when it does not", async () => {
   const dir = tempProject();
   try {
-    const pass = await handlePoliciesCommand("test", ["--command", "git push --force origin main", "--expect", "deny"], dir);
+    const pass = await handlePoliciesCommand(
+      "test",
+      ["--command", "git push --force origin main", "--expect", "deny"],
+      dir,
+    );
     assert.equal(pass.exitCode, 0);
     assert.match(pass.output, /PASS/);
     const fail = await handlePoliciesCommand("test", ["--command", "npm test", "--expect", "deny"], dir);
@@ -56,7 +60,11 @@ test("regression: policies set rejects a param name the rule does not have", asy
     assert.match(typo.output, /Known: thresholdKb/);
     assert.equal(existsSync(join(dir, ".ctrlplane", "policies.json")), false);
 
-    const ok = await handlePoliciesCommand("set", ["RULE-GIT-PROTECTED-BRANCH-PUSH", "protectedBranches", '["main","release"]'], dir);
+    const ok = await handlePoliciesCommand(
+      "set",
+      ["RULE-GIT-PROTECTED-BRANCH-PUSH", "protectedBranches", '["main","release"]'],
+      dir,
+    );
     assert.equal(ok.exitCode, 0);
     const res = await handlePoliciesCommand("test", ["--command", "git push origin release", "--expect", "ask"], dir);
     assert.equal(res.exitCode, 0, res.output);

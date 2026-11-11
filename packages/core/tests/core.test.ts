@@ -1,11 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  createSession,
-  validateSession,
-  computeSpecHash,
-  createAuditEvent,
-} from "../src/index.ts";
+import { createSession, validateSession, computeSpecHash, createAuditEvent } from "../src/index.ts";
 
 test("Session creation produces valid active session", () => {
   const session = createSession({
@@ -32,30 +27,15 @@ test("Specification hashing produces deterministic SHA-256", () => {
     },
   ];
 
-  const hash1 = computeSpecHash(
-    "Auth Feature",
-    "Add JWT auth",
-    ["Step 1", "Step 2"],
-    criteria
-  );
+  const hash1 = computeSpecHash("Auth Feature", "Add JWT auth", ["Step 1", "Step 2"], criteria);
 
-  const hash2 = computeSpecHash(
-    "Auth Feature",
-    "Add JWT auth",
-    ["Step 1", "Step 2"],
-    criteria
-  );
+  const hash2 = computeSpecHash("Auth Feature", "Add JWT auth", ["Step 1", "Step 2"], criteria);
 
   assert.equal(hash1, hash2);
   assert.equal(hash1.length, 64); // SHA-256 hex string
 
   // Modifying content must change hash
-  const hash3 = computeSpecHash(
-    "Auth Feature V2",
-    "Add JWT auth",
-    ["Step 1", "Step 2"],
-    criteria
-  );
+  const hash3 = computeSpecHash("Auth Feature V2", "Add JWT auth", ["Step 1", "Step 2"], criteria);
   assert.notEqual(hash1, hash3);
 });
 

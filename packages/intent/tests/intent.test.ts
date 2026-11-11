@@ -66,4 +66,3 @@ test("SpecManager creates template and records approvals", () => {
 
   rmSync(tmpDir, { recursive: true, force: true });
 });
-

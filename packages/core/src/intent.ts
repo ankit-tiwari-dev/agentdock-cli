@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 
-export type CriterionCategory =
-  | "DETERMINISTIC_TESTABLE"
-  | "SEMANTIC_BEHAVIORAL"
-  | "NEGATIVE_INVARIANT";
+export type CriterionCategory = "DETERMINISTIC_TESTABLE" | "SEMANTIC_BEHAVIORAL" | "NEGATIVE_INVARIANT";
 
 export interface AcceptanceCriterion {
   id: string; // e.g. "AC-1"
@@ -39,7 +36,7 @@ export function computeSpecHash(
   title: string,
   overview: string,
   plan: string[],
-  criteria: AcceptanceCriterion[]
+  criteria: AcceptanceCriterion[],
 ): string {
   const normalized = JSON.stringify({
     title: title.trim(),
@@ -64,12 +61,7 @@ export function createSpecification(params: {
   acceptanceCriteria: AcceptanceCriterion[];
   status?: SpecStatus;
 }): Specification {
-  const hash = computeSpecHash(
-    params.title,
-    params.overview,
-    params.plan,
-    params.acceptanceCriteria
-  );
+  const hash = computeSpecHash(params.title, params.overview, params.plan, params.acceptanceCriteria);
 
   return {
     id: params.id ?? `spec_${hash.slice(0, 12)}`,
@@ -84,4 +76,3 @@ export function createSpecification(params: {
     createdAt: Date.now(),
   };
 }
-

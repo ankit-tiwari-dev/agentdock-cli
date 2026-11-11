@@ -33,4 +33,3 @@ export function handleVerifyCommand(options?: {
 
   return formattedText;
 }
-

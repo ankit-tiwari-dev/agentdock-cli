@@ -58,4 +58,3 @@ export class SpecManager {
     return spec;
   }
 }
-

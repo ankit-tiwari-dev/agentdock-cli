@@ -28,4 +28,3 @@ export function handleSpecCommand(subcommand: string, args: string[], projectPat
 
   return `Unknown spec command '${subcommand}'. Available: new, approve, show.`;
 }
-

@@ -120,4 +120,3 @@ test("PolicyEngine evaluates in under 5ms (Performance Benchmark)", () => {
   // 5 ms leaves room for a busy CI runner and still fails on a rule that scans anything expensive.
   assert.ok(avgMs < 5, `Average latency was ${avgMs.toFixed(3)}ms (must be < 5ms)`);
 });
-

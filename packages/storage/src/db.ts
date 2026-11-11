@@ -2,12 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type {
-  Session,
-  Specification,
-  AuditEvent,
-  VerificationReport,
-} from "../../core/src/index.ts";
+import type { Session, Specification, AuditEvent, VerificationReport } from "../../core/src/index.ts";
 import { redactObject, redactSecrets } from "./redactor.ts";
 import { BlobStore, BLOB_THRESHOLD_BYTES } from "./blob.ts";
 
@@ -26,7 +21,8 @@ export class StorageEngine {
     this.db = new DatabaseSync(dbPath);
     // An in-memory store must not write into whatever folder the process happens to run in.
     const resolvedBlobDir =
-      blobDir ?? (dbPath === ":memory:" ? join(tmpdir(), `ctrlplane-blobs-${process.pid}`) : join(dirname(dbPath), "blobs"));
+      blobDir ??
+      (dbPath === ":memory:" ? join(tmpdir(), `ctrlplane-blobs-${process.pid}`) : join(dirname(dbPath), "blobs"));
     this.blobStore = new BlobStore(resolvedBlobDir);
 
     this.initPragmas();
@@ -173,19 +169,20 @@ export class StorageEngine {
       session.status,
       session.startedAt,
       session.endedAt ?? null,
-      session.metadata ? JSON.stringify(session.metadata) : null
+      session.metadata ? JSON.stringify(session.metadata) : null,
     );
     return Number(res.changes) > 0;
   }
 
   public updateSessionGit(id: string, gitBranch: string, baseCommitSha: string): void {
-    this.db.prepare(`UPDATE sessions SET git_branch = ?, base_commit_sha = ? WHERE id = ?`).run(gitBranch, baseCommitSha, id);
+    this.db
+      .prepare(`UPDATE sessions SET git_branch = ?, base_commit_sha = ? WHERE id = ?`)
+      .run(gitBranch, baseCommitSha, id);
   }
 
   public lastSequenceNum(sessionId: string): number {
     const row = this.db.prepare(`SELECT max(sequence_num) AS n FROM events WHERE session_id = ?`).get(sessionId) as
-      | { n: number | null }
-      | undefined;
+      { n: number | null } | undefined;
     return Number(row?.n ?? 0);
   }
 
@@ -207,7 +204,7 @@ export class StorageEngine {
       session.status,
       session.startedAt,
       session.endedAt ?? null,
-      session.metadata ? JSON.stringify(session.metadata) : null
+      session.metadata ? JSON.stringify(session.metadata) : null,
     );
   }
 
@@ -296,7 +293,7 @@ export class StorageEngine {
       event.policyVerdict ?? null,
       event.policyReason ?? null,
       event.executionDurationMs ?? null,
-      event.createdAt
+      event.createdAt,
     );
   }
 
@@ -331,9 +328,7 @@ export class StorageEngine {
         isBlobStored: r.is_blob_stored === 1,
         policyVerdict: r.policy_verdict as AuditEvent["policyVerdict"],
         policyReason: r.policy_reason ? String(r.policy_reason) : undefined,
-        executionDurationMs: r.execution_duration_ms
-          ? Number(r.execution_duration_ms)
-          : undefined,
+        executionDurationMs: r.execution_duration_ms ? Number(r.execution_duration_ms) : undefined,
         createdAt: Number(r.created_at),
       };
     });
@@ -360,7 +355,7 @@ export class StorageEngine {
       spec.status,
       spec.approvedBy ?? null,
       spec.approvedAt ?? null,
-      spec.createdAt
+      spec.createdAt,
     );
   }
 
@@ -403,7 +398,7 @@ export class StorageEngine {
       report.overallStatus,
       JSON.stringify(report.deterministicResults),
       report.summary,
-      report.createdAt
+      report.createdAt,
     );
 
     const findingStmt = this.db.prepare(`
@@ -423,7 +418,7 @@ export class StorageEngine {
         finding.verdict,
         finding.evidence ? JSON.stringify(finding.evidence) : null,
         finding.associatedTestFile ?? null,
-        finding.rationale
+        finding.rationale,
       );
     }
   }
@@ -433,12 +428,20 @@ export class StorageEngine {
   public addContextEntry(entry: Omit<ContextEntry, "id" | "createdAt"> & { createdAt?: number }): number {
     const res = this.db
       .prepare(`INSERT INTO context_entries (session_id, kind, body, meta_json, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .run(entry.sessionId ?? null, entry.kind, redactSecrets(entry.body).sanitized, entry.meta ? JSON.stringify(redactObject(entry.meta)) : null, entry.createdAt ?? Date.now());
+      .run(
+        entry.sessionId ?? null,
+        entry.kind,
+        redactSecrets(entry.body).sanitized,
+        entry.meta ? JSON.stringify(redactObject(entry.meta)) : null,
+        entry.createdAt ?? Date.now(),
+      );
     return Number(res.lastInsertRowid);
   }
 
   /** Keeps a single row per (session, kind), for rolling summaries that are rewritten every turn. */
-  public replaceContextEntry(entry: Omit<ContextEntry, "id" | "createdAt"> & { sessionId: string; createdAt?: number }): number {
+  public replaceContextEntry(
+    entry: Omit<ContextEntry, "id" | "createdAt"> & { sessionId: string; createdAt?: number },
+  ): number {
     this.db.prepare(`DELETE FROM context_entries WHERE kind = ? AND session_id = ?`).run(entry.kind, entry.sessionId);
     return this.addContextEntry(entry);
   }
@@ -447,8 +450,14 @@ export class StorageEngine {
   public listContextEntries(kind: ContextKind, options: { sessionId?: string; limit?: number } = {}): ContextEntry[] {
     const rows = (
       options.sessionId
-        ? this.db.prepare(`SELECT * FROM context_entries WHERE kind = ? AND session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`).all(kind, options.sessionId, options.limit ?? 20)
-        : this.db.prepare(`SELECT * FROM context_entries WHERE kind = ? ORDER BY created_at DESC, id DESC LIMIT ?`).all(kind, options.limit ?? 20)
+        ? this.db
+            .prepare(
+              `SELECT * FROM context_entries WHERE kind = ? AND session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
+            )
+            .all(kind, options.sessionId, options.limit ?? 20)
+        : this.db
+            .prepare(`SELECT * FROM context_entries WHERE kind = ? ORDER BY created_at DESC, id DESC LIMIT ?`)
+            .all(kind, options.limit ?? 20)
     ) as Record<string, unknown>[];
     return rows.map((r) => ({
       id: Number(r.id),
@@ -475,7 +484,11 @@ export class StorageEngine {
 
   /** Pinned first, then newest. */
   public listMemory(limit = 20): MemoryNote[] {
-    return (this.db.prepare(`SELECT * FROM memory ORDER BY pinned DESC, created_at DESC, id DESC LIMIT ?`).all(limit) as Record<string, unknown>[]).map(toMemoryNote);
+    return (
+      this.db
+        .prepare(`SELECT * FROM memory ORDER BY pinned DESC, created_at DESC, id DESC LIMIT ?`)
+        .all(limit) as Record<string, unknown>[]
+    ).map(toMemoryNote);
   }
 
   /** Ranked full-text search. Free text is reduced to quoted words so punctuation cannot break the FTS query syntax. */
@@ -484,7 +497,9 @@ export class StorageEngine {
     if (!words.length) return [];
     const match = words.map((w) => `"${w}"`).join(" OR ");
     const rows = this.db
-      .prepare(`SELECT m.* FROM memory_fts f JOIN memory m ON m.id = f.rowid WHERE memory_fts MATCH ? ORDER BY bm25(memory_fts), m.pinned DESC LIMIT ?`)
+      .prepare(
+        `SELECT m.* FROM memory_fts f JOIN memory m ON m.id = f.rowid WHERE memory_fts MATCH ? ORDER BY bm25(memory_fts), m.pinned DESC LIMIT ?`,
+      )
       .all(match, limit) as Record<string, unknown>[];
     return rows.map(toMemoryNote);
   }
@@ -517,7 +532,9 @@ function toMemoryNote(r: Record<string, unknown>): MemoryNote {
   return {
     id: Number(r.id),
     body: String(r.body),
-    tags: String(r.tags ?? "").split(" ").filter(Boolean),
+    tags: String(r.tags ?? "")
+      .split(" ")
+      .filter(Boolean),
     pinned: Number(r.pinned) === 1,
     createdAt: Number(r.created_at),
   };

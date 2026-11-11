@@ -35,7 +35,11 @@ export function readJsonObject(path: string): { data: Record<string, unknown>; r
  * Writes `data` only if it differs from what is on disk. The first time a file we did not
  * create is changed, a pristine copy is kept next to it (never overwritten afterwards).
  */
-export function writeJsonIfChanged(path: string, data: unknown, originalRaw?: string): { changed: boolean; backupPath?: string } {
+export function writeJsonIfChanged(
+  path: string,
+  data: unknown,
+  originalRaw?: string,
+): { changed: boolean; backupPath?: string } {
   const next = JSON.stringify(data, null, 2) + "\n";
   if (originalRaw !== undefined && originalRaw.replace(/\r\n/g, "\n").trim() === next.trim()) return { changed: false };
 
@@ -81,7 +85,9 @@ export function mergeHookGroups(
     const list = hooks[spec.event];
     if (!Array.isArray(list)) continue;
     const present = list.some(
-      (g) => Array.isArray((g as HookGroup)?.hooks) && (g as HookGroup).hooks.some((h) => h?.command === commandFor(spec.event)),
+      (g) =>
+        Array.isArray((g as HookGroup)?.hooks) &&
+        (g as HookGroup).hooks.some((h) => h?.command === commandFor(spec.event)),
     );
     if (present) alreadyCurrent.add(spec.event);
   }

@@ -15,4 +15,3 @@
     "test": "node --test tests/**/*.test.ts"
   }
 }
-

@@ -41,7 +41,7 @@ test("FULL E2E INTEGRATION: Init -> Spec -> Supervise -> Block Tamper -> Verify 
         toolName: "Bash",
         toolInput: { command: "rm -rf /var/lib/data" },
       },
-      { projectPath: tmpProject }
+      { projectPath: tmpProject },
     );
 
     assert.equal(attackRes.exitCode, 2);
@@ -59,7 +59,7 @@ test("FULL E2E INTEGRATION: Init -> Spec -> Supervise -> Block Tamper -> Verify 
           content: "export function login() { return 'jwt_token'; }",
         },
       },
-      { projectPath: tmpProject }
+      { projectPath: tmpProject },
     );
 
     assert.equal(safeRes.exitCode, 0);

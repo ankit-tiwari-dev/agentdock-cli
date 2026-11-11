@@ -26,12 +26,14 @@ export function formatVerificationReportText(report: VerificationReport): string
       finding.verdict === "DETERMINISTIC_PASS" || finding.verdict === "SEMANTIC_VERIFIED"
         ? "[PASS]"
         : finding.verdict === "UNCHECKED"
-        ? "[UNCHECKED]"
-        : "[DISCREPANCY]";
+          ? "[UNCHECKED]"
+          : "[DISCREPANCY]";
 
     lines.push(`  ${symbol} ${finding.criterionId}: ${finding.verdict}`);
     if (finding.evidence) {
-      lines.push(`     Evidence: ${finding.evidence.filePath}:${finding.evidence.lineStart}-${finding.evidence.lineEnd}`);
+      lines.push(
+        `     Evidence: ${finding.evidence.filePath}:${finding.evidence.lineStart}-${finding.evidence.lineEnd}`,
+      );
       if (finding.evidence.codeSnippet) {
         lines.push(`     Snippet:  ${finding.evidence.codeSnippet}`);
       }
@@ -46,4 +48,3 @@ export function formatVerificationReportText(report: VerificationReport): string
 
   return lines.join("\n");
 }
-

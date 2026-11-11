@@ -49,7 +49,10 @@ export function recordWithoutDaemon(payload: AgentHookPayload, projectRoot: stri
   if (!RECORDED_EVENTS.has(payload.hookEventName) || !existsSync(join(projectRoot, ".ctrlplane"))) return;
   const storage = new StorageEngine(auditDbPath(projectRoot));
   try {
-    new ContextRecorder(storage, projectRoot, { allowAsync: false }).record(payload, payload.sessionId ?? "sess_default");
+    new ContextRecorder(storage, projectRoot, { allowAsync: false }).record(
+      payload,
+      payload.sessionId ?? "sess_default",
+    );
   } finally {
     storage.close();
   }

@@ -14,7 +14,7 @@ export function handleAuditCommand(subcommand: string, args: string[], projectPa
 
       const rows = sessions.map(
         (s) =>
-          `• [${s.status.toUpperCase()}] ${s.id} | Agent: ${s.agentType} | Branch: ${s.gitBranch} | Started: ${new Date(s.startedAt).toLocaleTimeString()}`
+          `• [${s.status.toUpperCase()}] ${s.id} | Agent: ${s.agentType} | Branch: ${s.gitBranch} | Started: ${new Date(s.startedAt).toLocaleTimeString()}`,
       );
       return ["Recent Agent Sessions:", ...rows].join("\n");
     }
@@ -31,8 +31,7 @@ export function handleAuditCommand(subcommand: string, args: string[], projectPa
       }
 
       const rows = events.map(
-        (e) =>
-          `  #${e.sequenceNum} [${e.eventType}] tool=${e.toolName ?? "none"} verdict=${e.policyVerdict ?? "N/A"}`
+        (e) => `  #${e.sequenceNum} [${e.eventType}] tool=${e.toolName ?? "none"} verdict=${e.policyVerdict ?? "N/A"}`,
       );
       return [`Audit Timeline for ${sessionId} (${events.length} events):`, ...rows].join("\n");
     }
@@ -42,4 +41,3 @@ export function handleAuditCommand(subcommand: string, args: string[], projectPa
     storage.close();
   }
 }
-

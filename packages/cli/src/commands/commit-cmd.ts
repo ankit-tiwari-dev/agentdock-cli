@@ -3,7 +3,7 @@ import { commitAgentTurn } from "../../../git-analyzer/src/agent-commit-tracker.
 export function handleCommitCommand(subjectArgs: string[]): string {
   const subject = subjectArgs.join(" ").trim();
   if (!subject) {
-    return "Usage: ctrlplane commit \"<commit subject>\"\nExample: ctrlplane commit \"Implement authentication middleware\"";
+    return 'Usage: ctrlplane commit "<commit subject>"\nExample: ctrlplane commit "Implement authentication middleware"';
   }
 
   try {
@@ -23,4 +23,3 @@ export function handleCommitCommand(subjectArgs: string[]): string {
     return `Failed to create agent commit: ${msg}`;
   }
 }
-

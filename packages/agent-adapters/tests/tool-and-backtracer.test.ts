@@ -3,10 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  canonicalizeToolName,
-  canonicalizeToolInput,
-} from "../src/tool-canonicalizer.ts";
+import { canonicalizeToolName, canonicalizeToolInput } from "../src/tool-canonicalizer.ts";
 import { findLocalClaudeTranscripts, parseClaudeTranscript } from "../src/backtracer.ts";
 
 const jsonl = (records: unknown[]): string => records.map((r) => JSON.stringify(r)).join("\n");
@@ -87,9 +84,19 @@ test("regression: nested Claude Code transcript yields real turns, tokens, tools
         content: [
           { type: "text", text: "I'll read the file and add the check." },
           { type: "tool_use", id: "tu_1", name: "Read", input: { file_path: "src/auth.ts" } },
-          { type: "tool_use", id: "tu_2", name: "Edit", input: { file_path: "src/auth.ts", old_string: "a", new_string: "b" } },
+          {
+            type: "tool_use",
+            id: "tu_2",
+            name: "Edit",
+            input: { file_path: "src/auth.ts", old_string: "a", new_string: "b" },
+          },
         ],
-        usage: { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 5000, cache_creation_input_tokens: 700 },
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 200,
+          cache_read_input_tokens: 5000,
+          cache_creation_input_tokens: 700,
+        },
       },
       timestamp: "2026-11-10T09:00:03.000Z",
     }),
@@ -173,7 +180,11 @@ test("Backtracer - cache-read tokens are priced with the turn's model cache rate
     { type: "user", message: { role: "user", content: "hi" }, timestamp: "2026-11-10T10:00:00Z" },
     {
       type: "assistant",
-      message: { model: "claude-3-5-sonnet-20241022", content: [{ type: "text", text: "ok" }], usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 } },
+      message: {
+        model: "claude-3-5-sonnet-20241022",
+        content: [{ type: "text", text: "ok" }],
+        usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 },
+      },
     },
   ]);
   const session = parseClaudeTranscript(content);
@@ -192,7 +203,12 @@ test("regression: a current model is priced at its own rate, cache writes includ
         id: "msg_1",
         model: "claude-opus-5-5",
         content: [{ type: "text", text: "ok" }],
-        usage: { input_tokens: 2, output_tokens: 1036, cache_read_input_tokens: 35723, cache_creation_input_tokens: 13700 },
+        usage: {
+          input_tokens: 2,
+          output_tokens: 1036,
+          cache_read_input_tokens: 35723,
+          cache_creation_input_tokens: 13700,
+        },
       },
     },
   ]);
@@ -206,8 +222,19 @@ test("Backtracer - repeated lines of one response count its usage once", () => {
   const usage = { input_tokens: 100, output_tokens: 50 };
   const content = jsonl([
     { type: "user", message: { role: "user", content: "go" } },
-    { type: "assistant", message: { id: "msg_x", model: "claude-sonnet-4", content: [{ type: "text", text: "Reading." }], usage } },
-    { type: "assistant", message: { id: "msg_x", model: "claude-sonnet-4", content: [{ type: "tool_use", name: "Read", input: { path: "a.md" } }], usage } },
+    {
+      type: "assistant",
+      message: { id: "msg_x", model: "claude-sonnet-4", content: [{ type: "text", text: "Reading." }], usage },
+    },
+    {
+      type: "assistant",
+      message: {
+        id: "msg_x",
+        model: "claude-sonnet-4",
+        content: [{ type: "tool_use", name: "Read", input: { path: "a.md" } }],
+        usage,
+      },
+    },
   ]);
   const session = parseClaudeTranscript(content);
   assert.equal(session.totalTokens, 150);
@@ -217,7 +244,11 @@ test("Backtracer - repeated lines of one response count its usage once", () => {
 test("Backtracer - still reads flat lines and defaults the model when none is given", () => {
   const content = jsonl([
     { type: "user", content: "Please build the login module", timestamp: "2026-11-10T10:00:00Z" },
-    { type: "assistant", usage: { input_tokens: 1500, output_tokens: 300 }, content: [{ type: "tool_use", name: "Write", input: { filePath: "src/login.ts" } }] },
+    {
+      type: "assistant",
+      usage: { input_tokens: 1500, output_tokens: 300 },
+      content: [{ type: "tool_use", name: "Write", input: { filePath: "src/login.ts" } }],
+    },
   ]);
   const session = parseClaudeTranscript(content);
   assert.equal(session.totalTurns, 1);
@@ -238,7 +269,7 @@ test("Backtracer - long assistant text is cut to about 200 characters", () => {
 });
 
 test("Backtracer - an empty or junk transcript yields no turns", () => {
-  const session = parseClaudeTranscript("\n\nnot json\n{\"type\":\"summary\"}\n");
+  const session = parseClaudeTranscript('\n\nnot json\n{"type":"summary"}\n');
   assert.equal(session.totalTurns, 0);
   assert.equal(session.totalTokens, 0);
   assert.equal(session.totalCostUsd, 0);

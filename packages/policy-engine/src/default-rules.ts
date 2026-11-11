@@ -25,7 +25,10 @@ export const AGENT_HOOK_CONFIG_FILES = [
 
 // Memory is injected into every future session, so only the developer may write it.
 const OFF_SWITCH_VERBS = String.raw`(?:stop|pause|uninstall|policies\s+(?:disable|off|observe|set)|memory\s+(?:add|rm))\b`;
-const SUPERVISOR_OFF_SWITCH = new RegExp(String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${OFF_SWITCH_VERBS}|\bbin\.ts["']?\s+${OFF_SWITCH_VERBS}`, "i");
+const SUPERVISOR_OFF_SWITCH = new RegExp(
+  String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${OFF_SWITCH_VERBS}|\bbin\.ts["']?\s+${OFF_SWITCH_VERBS}`,
+  "i",
+);
 
 export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
   {
@@ -42,10 +45,14 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
     check: (ctx) => {
       for (const sub of ctx.subCommands) {
         if (SUPERVISOR_OFF_SWITCH.test(sub)) {
-          return { message: `Security Violation: Agents cannot stop, pause or reconfigure their own supervisor or write its memory (Triggered by command: '${sub}')` };
+          return {
+            message: `Security Violation: Agents cannot stop, pause or reconfigure their own supervisor or write its memory (Triggered by command: '${sub}')`,
+          };
         }
         if (writesUnder(sub, AGENT_HOOK_CONFIG_FILES)) {
-          return { message: `Security Violation: Agents cannot edit or disable their own supervision hooks. (Triggered by command: '${sub}')` };
+          return {
+            message: `Security Violation: Agents cannot edit or disable their own supervision hooks. (Triggered by command: '${sub}')`,
+          };
         }
       }
       return null;
@@ -62,7 +69,8 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
     targetTools: ["Edit", "Write", "Bash"],
     filePatterns: [".ctrlplane/**", ".git/**"],
     action: "DENY",
-    message: "Access Denied: AI agents are strictly forbidden from modifying control plane configuration or Git internals.",
+    message:
+      "Access Denied: AI agents are strictly forbidden from modifying control plane configuration or Git internals.",
     check: (ctx) => {
       const home = process.env.CTRLPLANE_HOME?.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
       if (home) {
@@ -70,11 +78,16 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
           const lower = p.toLowerCase();
           return lower === home || lower.startsWith(`${home}/`);
         });
-        if (hit) return { message: `Access Denied: AI agents cannot modify the user-level control plane config. (Target file: '${hit}')` };
+        if (hit)
+          return {
+            message: `Access Denied: AI agents cannot modify the user-level control plane config. (Target file: '${hit}')`,
+          };
       }
       for (const sub of ctx.subCommands) {
         if (writesUnder(sub, [".ctrlplane/", ".git/"])) {
-          return { message: `Access Denied: AI agents are strictly forbidden from modifying control plane configuration or Git internals. (Triggered by command: '${sub}')` };
+          return {
+            message: `Access Denied: AI agents are strictly forbidden from modifying control plane configuration or Git internals. (Triggered by command: '${sub}')`,
+          };
         }
       }
       return null;
@@ -84,7 +97,8 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
   {
     id: "RULE-BLOCK-DESTRUCTIVE-SHELL",
     name: "Block Destructive Shell Commands",
-    description: "Blocks recursive deletes of root/home/outside-project paths, force pushes, hard resets, forced cleans and disk wipes.",
+    description:
+      "Blocks recursive deletes of root/home/outside-project paths, force pushes, hard resets, forced cleans and disk wipes.",
     event: "PreToolUse",
     category: "destructive",
     targetTools: ["Bash"],
@@ -93,7 +107,8 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
     check: (ctx) => {
       for (const sub of ctx.subCommands) {
         let what: string | null = null;
-        if (isCatastrophicDelete(sub, ctx.projectRoot)) what = "recursive delete outside the project or of a protected location";
+        if (isCatastrophicDelete(sub, ctx.projectRoot))
+          what = "recursive delete outside the project or of a protected location";
         else if (isForcePush(sub)) what = "force push (use --force-with-lease if you must rewrite your own branch)";
         else if (isHardReset(sub)) what = "git reset --hard discards uncommitted work";
         else if (isForceClean(sub)) what = "git clean -fd deletes untracked files";
@@ -111,7 +126,8 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
   {
     id: "RULE-BLOCK-SECRET-READS",
     name: "Block Secret File Access",
-    description: "Blocks reading or writing .env files, private keys and credential stores. Example env files stay readable.",
+    description:
+      "Blocks reading or writing .env files, private keys and credential stores. Example env files stay readable.",
     event: "PreToolUse",
     category: "secrets",
     targetTools: ["Read", "Edit", "Write", "Grep", "Bash"],
@@ -120,13 +136,17 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
     check: (ctx) => {
       for (const p of ctx.filePaths) {
         if (isSensitiveFile(p)) {
-          return { message: `Security Policy: Reading private credentials, environment secrets, or private keys is prohibited. (Target file: '${p}')` };
+          return {
+            message: `Security Policy: Reading private credentials, environment secrets, or private keys is prohibited. (Target file: '${p}')`,
+          };
         }
       }
       for (const sub of ctx.subCommands) {
         const file = readsSensitiveFile(sub);
         if (file) {
-          return { message: `Security Policy: Reading private credentials, environment secrets, or private keys is prohibited. (Triggered by command: '${sub}')` };
+          return {
+            message: `Security Policy: Reading private credentials, environment secrets, or private keys is prohibited. (Triggered by command: '${sub}')`,
+          };
         }
       }
       return null;
@@ -156,7 +176,10 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
       }
       for (const sub of ctx.subCommands) {
         const t = argv(sub);
-        if ((t[0] === "rm" || t[0] === "git" && t[1] === "rm" || t[0] === "mv") && t.slice(1).some((a) => !a.startsWith("-") && isTest(a))) {
+        if (
+          (t[0] === "rm" || (t[0] === "git" && t[1] === "rm") || t[0] === "mv") &&
+          t.slice(1).some((a) => !a.startsWith("-") && isTest(a))
+        ) {
           return {
             message: `Anti-Test-Gaming Policy: Deleting or moving existing tests requires explicit developer approval. (Triggered by command: '${sub}')`,
           };

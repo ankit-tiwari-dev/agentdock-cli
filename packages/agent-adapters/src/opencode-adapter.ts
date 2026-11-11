@@ -55,7 +55,10 @@ export const CtrlplanePlugin = async ({ directory }) => ({
 `;
 }
 
-export function injectOpenCodePlugin(projectPath: string, hookCommand = defaultHookCommand()): {
+export function injectOpenCodePlugin(
+  projectPath: string,
+  hookCommand = defaultHookCommand(),
+): {
   success: boolean;
   configPath: string;
   pluginPath: string;

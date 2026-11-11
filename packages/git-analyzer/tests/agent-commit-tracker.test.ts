@@ -27,7 +27,10 @@ test("Commit Tracker - maskAbsolutePaths handles Windows forward slashes, UNC an
   assert.equal(maskAbsolutePaths("Copied to \\\\fileserver\\team"), "Copied to [PATH]");
   assert.equal(maskAbsolutePaths("Edited /Users/bob/work/api/server.go"), "Edited [PATH]/server.go");
   assert.equal(maskAbsolutePaths("Config at /etc/nginx/nginx.conf"), "Config at [PATH]/nginx.conf");
-  assert.equal(maskAbsolutePaths("Logs in /var/log/app.log and /usr/local/bin/tool"), "Logs in [PATH]/app.log and [PATH]/tool");
+  assert.equal(
+    maskAbsolutePaths("Logs in /var/log/app.log and /usr/local/bin/tool"),
+    "Logs in [PATH]/app.log and [PATH]/tool",
+  );
 });
 
 test("Commit Tracker - maskAbsolutePaths never reveals a user name or a bare directory", () => {
@@ -40,7 +43,7 @@ test("Commit Tracker - maskAbsolutePaths never reveals a user name or a bare dir
 test("Commit Tracker - maskAbsolutePaths keeps trailing punctuation and wrappers outside the mask", () => {
   assert.equal(maskAbsolutePaths("Updated /home/alice/app/main.js."), "Updated [PATH]/main.js.");
   assert.equal(maskAbsolutePaths("See (C:\\Users\\me\\notes.md), then"), "See ([PATH]/notes.md), then");
-  assert.equal(maskAbsolutePaths("Wrote \"/Users/me/a/b.txt\"!"), "Wrote \"[PATH]/b.txt\"!");
+  assert.equal(maskAbsolutePaths('Wrote "/Users/me/a/b.txt"!'), 'Wrote "[PATH]/b.txt"!');
   assert.equal(maskAbsolutePaths("out=/home/me/build/out.log;"), "out=[PATH]/out.log;");
 });
 
@@ -96,10 +99,7 @@ test("Commit Tracker - buildAgentCommitMessage layout, prefix, length cap and su
     summary: "Touched /home/alice/app/main.js",
     metadata: { agentId: "a1", toolsUsed: [] },
   });
-  assert.equal(
-    msg,
-    `[AgentDock] Already prefixed\n\nTouched [PATH]/main.js\n\n${AGENT_COMMIT_HEADER}\nagent_id: a1\n`,
-  );
+  assert.equal(msg, `[AgentDock] Already prefixed\n\nTouched [PATH]/main.js\n\n${AGENT_COMMIT_HEADER}\nagent_id: a1\n`);
 
   const long = buildAgentCommitMessage({ subject: "x".repeat(200), metadata: { agentId: "a2" } });
   const subjectLine = long.split("\n")[0];

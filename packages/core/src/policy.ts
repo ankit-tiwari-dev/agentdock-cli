@@ -2,41 +2,19 @@
  * ALLOW: let it run. DENY: block it. INSTRUCT: let it run but steer the agent with a message.
  * REQUIRE_MANUAL_APPROVAL: hand the decision to the human ("ask").
  */
-export type PolicyAction =
-  | "ALLOW"
-  | "DENY"
-  | "INSTRUCT"
-  | "REQUIRE_MANUAL_APPROVAL";
+export type PolicyAction = "ALLOW" | "DENY" | "INSTRUCT" | "REQUIRE_MANUAL_APPROVAL";
 
 export type PolicyEvent =
-  | "PreToolUse"
-  | "PostToolUse"
-  | "UserPromptSubmit"
-  | "Stop"
-  | "SubagentStop"
-  | "SessionStart"
-  | "PreCompact";
+  "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "SessionStart" | "PreCompact";
 
 /** enforce: the verdict is applied. observe: the verdict is only logged ("would deny"). */
 export type PolicyMode = "enforce" | "observe";
 
 export type PolicyCategory =
-  | "integrity"
-  | "secrets"
-  | "destructive"
-  | "git"
-  | "infra"
-  | "database"
-  | "packages"
-  | "workflow"
-  | "agent-behavior";
+  "integrity" | "secrets" | "destructive" | "git" | "infra" | "database" | "packages" | "workflow" | "agent-behavior";
 
 export type ConditionType =
-  | "EXISTING_FILE_MODIFIED"
-  | "DELETION_OF_ASSERTIONS"
-  | "REGEX_COMMAND_MATCH"
-  | "PATH_GLOB_MATCH"
-  | "AST_PATTERN_MATCH";
+  "EXISTING_FILE_MODIFIED" | "DELETION_OF_ASSERTIONS" | "REGEX_COMMAND_MATCH" | "PATH_GLOB_MATCH" | "AST_PATTERN_MATCH";
 
 export interface PolicyCondition {
   type: ConditionType;

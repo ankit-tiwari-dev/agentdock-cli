@@ -52,7 +52,11 @@ function specSection(spec: Specification | null): string | null {
 }
 
 /** The most useful "where we left off" entry: this session's pre-compaction capture after a compaction, else the newest handoff or summary from another session. */
-function lastSessionSection(storage: StorageEngine, input: ContextPackInput, now: number): { text: string; sessionId?: string } | null {
+function lastSessionSection(
+  storage: StorageEngine,
+  input: ContextPackInput,
+  now: number,
+): { text: string; sessionId?: string } | null {
   let pick: ContextEntry | undefined;
   let heading = "## Where the last session left off";
 
@@ -62,28 +66,45 @@ function lastSessionSection(storage: StorageEngine, input: ContextPackInput, now
   }
   if (!pick) {
     const others = (e: ContextEntry) => e.sessionId !== input.sessionId;
-    const handoff = storage.listContextEntries("handoff", { limit: 5 }).find((e) => now - e.createdAt < HANDOFF_MAX_AGE_MS);
-    const summary = storage.listContextEntries("summary", { limit: 10 }).find(others) ?? storage.listContextEntries("compact", { limit: 10 }).find(others);
+    const handoff = storage
+      .listContextEntries("handoff", { limit: 5 })
+      .find((e) => now - e.createdAt < HANDOFF_MAX_AGE_MS);
+    const summary =
+      storage.listContextEntries("summary", { limit: 10 }).find(others) ??
+      storage.listContextEntries("compact", { limit: 10 }).find(others);
     pick = handoff && (!summary || handoff.createdAt >= summary.createdAt) ? handoff : summary;
     if (pick?.kind === "handoff") heading = "## Handoff from the previous session";
   }
   if (!pick) return null;
   const age = Math.max(1, Math.round((now - pick.createdAt) / 60_000));
-  const ageText = age < 120 ? `${age} min ago` : age < 2880 ? `${Math.round(age / 60)} h ago` : `${Math.round(age / 1440)} days ago`;
+  const ageText =
+    age < 120 ? `${age} min ago` : age < 2880 ? `${Math.round(age / 60)} h ago` : `${Math.round(age / 1440)} days ago`;
   return { text: cap(`${heading} (${ageText})\n${pick.body}`, SECTION_CAP.lastSession), sessionId: pick.sessionId };
 }
 
 /** Requests from sessions other than the current one and the one already summarised above. */
 function intentsSection(storage: StorageEngine, skip: (string | undefined)[]): string | null {
-  const intents = storage.listContextEntries("intent", { limit: 20 }).filter((e) => !skip.includes(e.sessionId)).slice(0, 3);
+  const intents = storage
+    .listContextEntries("intent", { limit: 20 })
+    .filter((e) => !skip.includes(e.sessionId))
+    .slice(0, 3);
   if (!intents.length) return null;
-  return cap(["## Recent requests from the developer", ...intents.reverse().map((e) => `- ${e.body}`)].join("\n"), SECTION_CAP.intents);
+  return cap(
+    ["## Recent requests from the developer", ...intents.reverse().map((e) => `- ${e.body}`)].join("\n"),
+    SECTION_CAP.intents,
+  );
 }
 
 function memorySection(storage: StorageEngine): string | null {
   const notes = storage.listMemory(8);
   if (!notes.length) return null;
-  return cap(["## Project memory (written by the developer)", ...notes.map((n) => `- ${n.pinned ? "[pinned] " : ""}${n.body}`)].join("\n"), SECTION_CAP.memory);
+  return cap(
+    [
+      "## Project memory (written by the developer)",
+      ...notes.map((n) => `- ${n.pinned ? "[pinned] " : ""}${n.body}`),
+    ].join("\n"),
+    SECTION_CAP.memory,
+  );
 }
 
 function capabilitiesSection(storage: StorageEngine, now: number): string | null {
@@ -100,8 +121,14 @@ function supervisionSection(s: SupervisionState | undefined): string | null {
   if (!s) return null;
   const parts = [`${s.enforcing} rules enforced`];
   if (s.observing.length) parts.push(`observe-only: ${s.observing.slice(0, 5).join(", ")}`);
-  if (s.pausedUntil) parts.push(`supervision paused until ${new Date(s.pausedUntil).toISOString().slice(11, 16)} UTC (integrity rules still apply)`);
-  return cap(`## Supervision\n${parts.join("; ")}. A blocked call comes back with the reason; change approach rather than retrying it.`, SECTION_CAP.supervision);
+  if (s.pausedUntil)
+    parts.push(
+      `supervision paused until ${new Date(s.pausedUntil).toISOString().slice(11, 16)} UTC (integrity rules still apply)`,
+    );
+  return cap(
+    `## Supervision\n${parts.join("; ")}. A blocked call comes back with the reason; change approach rather than retrying it.`,
+    SECTION_CAP.supervision,
+  );
 }
 
 /** Context injected at SessionStart. Returns undefined when there is nothing worth saying. */

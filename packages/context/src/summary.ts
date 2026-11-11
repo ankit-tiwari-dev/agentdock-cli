@@ -23,7 +23,8 @@ export function capabilityUsed(toolName: string, input: unknown): string | null 
   if (mcp) return `mcp ${mcp[1]}`;
   const args = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   if (toolName === "Skill" && typeof args.skill === "string") return `skill ${args.skill}`;
-  if ((toolName === "Task" || toolName === "Agent") && typeof args.subagent_type === "string") return `agent ${args.subagent_type}`;
+  if ((toolName === "Task" || toolName === "Agent") && typeof args.subagent_type === "string")
+    return `agent ${args.subagent_type}`;
   return null;
 }
 
@@ -39,7 +40,15 @@ function shorten(text: string, max: number): string {
 
 /** What happened in a session, computed from its audit events alone (no model involved). */
 export function digestSession(sessionId: string, events: AuditEvent[], projectRoot: string): SessionDigest {
-  const digest: SessionDigest = { sessionId, toolCalls: 0, intents: [], filesChanged: [], commands: [], interventions: [], capabilitiesUsed: [] };
+  const digest: SessionDigest = {
+    sessionId,
+    toolCalls: 0,
+    intents: [],
+    filesChanged: [],
+    commands: [],
+    interventions: [],
+    capabilitiesUsed: [],
+  };
   const commandIndex = new Map<string, number>();
   const interventionIndex = new Map<string, number>();
 
@@ -104,12 +113,18 @@ export function renderDigest(d: SessionDigest): string {
     lines.push(`Files changed: ${d.filesChanged.slice(0, MAX_FILES).join(", ")}${more}`);
   }
   if (d.commands.length) {
-    lines.push(`Commands: ${d.commands.slice(0, MAX_COMMANDS).map((c) => (c.count > 1 ? `${c.command} (×${c.count})` : c.command)).join("; ")}`);
+    lines.push(
+      `Commands: ${d.commands
+        .slice(0, MAX_COMMANDS)
+        .map((c) => (c.count > 1 ? `${c.command} (×${c.count})` : c.command))
+        .join("; ")}`,
+    );
   }
   if (d.capabilitiesUsed.length) lines.push(`Used: ${d.capabilitiesUsed.slice(0, 10).join(", ")}`);
   if (d.interventions.length) {
     lines.push("Supervisor stepped in:");
-    for (const i of d.interventions.slice(0, 5)) lines.push(`- ${i.decision}${i.count > 1 ? ` ×${i.count}` : ""}: ${i.reason}`);
+    for (const i of d.interventions.slice(0, 5))
+      lines.push(`- ${i.decision}${i.count > 1 ? ` ×${i.count}` : ""}: ${i.reason}`);
   }
   return lines.join("\n");
 }
@@ -131,7 +146,13 @@ export const claudeCliRunner: SummaryRunner = (input, systemPrompt, timeoutMs) =
     const child = execFile(
       process.env.CTRLPLANE_CLAUDE_BIN ?? "claude",
       ["-p", "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--system-prompt", systemPrompt],
-      { cwd: tmpdir(), timeout: timeoutMs, maxBuffer: 1024 * 1024, windowsHide: true, env: { ...process.env, CTRLPLANE_NESTED: "1" } },
+      {
+        cwd: tmpdir(),
+        timeout: timeoutMs,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true,
+        env: { ...process.env, CTRLPLANE_NESTED: "1" },
+      },
       (err, stdout) => (err ? reject(err) : resolve(String(stdout))),
     );
     child.stdin?.end(input);
@@ -140,7 +161,11 @@ export const claudeCliRunner: SummaryRunner = (input, systemPrompt, timeoutMs) =
 const PREAMBLE = /^(?:here(?:'s| is)|sure|certainly|okay|ok)\b[^\n]*:\s*\n/i;
 
 /** Model summary of a digest, or null when disabled, failed, timed out or returned something unusable. */
-export async function aiSummarize(digestText: string, run: SummaryRunner = claudeCliRunner, timeoutMs = 60_000): Promise<string | null> {
+export async function aiSummarize(
+  digestText: string,
+  run: SummaryRunner = claudeCliRunner,
+  timeoutMs = 60_000,
+): Promise<string | null> {
   try {
     let out = (await run(digestText, SYSTEM_PROMPT, timeoutMs)).trim();
     out = out.replace(PREAMBLE, "").trim();

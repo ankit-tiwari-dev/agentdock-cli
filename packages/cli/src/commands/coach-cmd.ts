@@ -3,7 +3,7 @@ import { evaluatePromptQuality } from "../../../explanation/src/prompt-coach.ts"
 export function handleCoachCommand(promptArgs: string[]): string {
   const prompt = promptArgs.join(" ").trim();
   if (!prompt) {
-    return "Usage: ctrlplane coach \"<prompt text>\"\nExample: ctrlplane coach \"Please update auth.ts and run tests\"";
+    return 'Usage: ctrlplane coach "<prompt text>"\nExample: ctrlplane coach "Please update auth.ts and run tests"';
   }
 
   const feedback = evaluatePromptQuality(prompt);
@@ -38,4 +38,3 @@ export function handleCoachCommand(promptArgs: string[]): string {
 
   return lines.join("\n");
 }
-

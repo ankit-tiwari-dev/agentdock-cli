@@ -143,9 +143,8 @@ function rate(score: number): PromptCoachingFeedback["rating"] {
 }
 
 function buildTemplate(prompt: string, signals: PromptSignals): string {
-  const objective = signals.taskCount >= MULTI_TASK_THRESHOLD
-    ? `${prompt} (pick ONE of these tasks for this prompt)`
-    : prompt;
+  const objective =
+    signals.taskCount >= MULTI_TASK_THRESHOLD ? `${prompt} (pick ONE of these tasks for this prompt)` : prompt;
   return [
     `Objective: ${objective}`,
     "Context: <files, functions or modules involved, e.g. src/auth.ts>",
@@ -180,7 +179,7 @@ export function evaluatePromptQuality(prompt: string): PromptCoachingFeedback {
 
   if (signals.isVague) {
     score -= 10;
-    detectedIssues.push("Vague references (\"this\", \"it\", \"stuff\") without saying what they point to.");
+    detectedIssues.push('Vague references ("this", "it", "stuff") without saying what they point to.');
     recommendations.push("Replace pronouns with the exact file, function or behaviour you mean.");
   }
 

@@ -1,7 +1,4 @@
-import type {
-  ExplanationReport,
-  RiskLevel,
-} from "../../core/src/index.ts";
+import type { ExplanationReport, RiskLevel } from "../../core/src/index.ts";
 import { computeDiffBlastRadius } from "./blast-radius.ts";
 import { auditDependencyChanges } from "./dependency-auditor.ts";
 import { generateSocraticQuiz } from "./quiz-generator.ts";
@@ -24,12 +21,8 @@ export class ExplanationEngine {
     let riskLevel: RiskLevel = "LOW";
     const potentialRisks: string[] = [];
 
-    const touchesAuth = fileDiffs.some((f) =>
-      /auth|login|token|jwt|crypto|security/i.test(f.newPath)
-    );
-    const touchesBilling = fileDiffs.some((f) =>
-      /billing|stripe|payment|invoice/i.test(f.newPath)
-    );
+    const touchesAuth = fileDiffs.some((f) => /auth|login|token|jwt|crypto|security/i.test(f.newPath));
+    const touchesBilling = fileDiffs.some((f) => /billing|stripe|payment|invoice/i.test(f.newPath));
 
     if (touchesBilling) {
       riskLevel = "CRITICAL";
@@ -47,9 +40,7 @@ export class ExplanationEngine {
     }
 
     // 2. Generate Socratic Quiz if requested
-    const comprehensionQuestions = options.generateQuiz
-      ? generateSocraticQuiz(options.diffUnified)
-      : undefined;
+    const comprehensionQuestions = options.generateQuiz ? generateSocraticQuiz(options.diffUnified) : undefined;
 
     const summary = `Modified ${fileDiffs.length} file(s) touching ${blastRadius.length} symbol definition(s). Risk assessed as ${riskLevel}.`;
 
@@ -66,4 +57,3 @@ export class ExplanationEngine {
     };
   }
 }
-

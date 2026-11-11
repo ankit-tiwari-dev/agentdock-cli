@@ -15,7 +15,11 @@ export interface HookRunOptions {
 const CONTEXT_EVENTS = new Set(["UserPromptSubmit", "SessionStart", "PreCompact", "Stop", "SessionEnd"]);
 
 /** Pure core of the hook shim: stdin text in, process output out. */
-export async function runHook(eventName: string | undefined, stdinText: string, options: HookRunOptions = {}): Promise<HookProcessOutput> {
+export async function runHook(
+  eventName: string | undefined,
+  stdinText: string,
+  options: HookRunOptions = {},
+): Promise<HookProcessOutput> {
   // The summariser's own `claude -p` child must never be supervised by, or recorded into, the session it summarises.
   if (process.env.CTRLPLANE_NESTED === "1") return { exitCode: 0 };
 
@@ -49,7 +53,10 @@ export async function runHook(eventName: string | undefined, stdinText: string, 
   }
 
   let extraContext: string | undefined;
-  if (options.contextProvider && (payload.hookEventName === "SessionStart" || payload.hookEventName === "UserPromptSubmit")) {
+  if (
+    options.contextProvider &&
+    (payload.hookEventName === "SessionStart" || payload.hookEventName === "UserPromptSubmit")
+  ) {
     try {
       extraContext = await options.contextProvider(payload, projectRoot);
     } catch {
@@ -100,7 +107,8 @@ export async function handleHookCommand(eventName: string, args: string[] = []):
 
   const out = await runHook(eventName, stdinPayload, {
     agent,
-    contextProvider: async (payload, root) => (await import("../../../context/src/hook-context.ts")).contextForHook(payload, root),
+    contextProvider: async (payload, root) =>
+      (await import("../../../context/src/hook-context.ts")).contextForHook(payload, root),
   });
 
   if (out.stdout) process.stdout.write(`${out.stdout}\n`);

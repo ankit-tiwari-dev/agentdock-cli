@@ -51,7 +51,7 @@ export const MODEL_PRICING_CATALOG: Record<string, ModelPricing> = {
   "gemini-2.5-pro": price(1.25, 5),
   "gpt-4o": price(2.5, 10, 1.25),
   "gpt-4o-mini": price(0.15, 0.6, 0.075),
-  "o1": price(15, 60),
+  o1: price(15, 60),
   "o3-mini": price(1.1, 4.4),
   "deepseek-r1": price(0.55, 2.19),
   "ollama/deepseek-r1": price(0, 0),

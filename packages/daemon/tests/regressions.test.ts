@@ -11,12 +11,27 @@ const project = () => mkdtempSync(join(tmpdir(), "ctrlplane-daemon-reg-"));
 test("regression: events persist for a session the daemon has never seen (no pre-seeded session row)", () => {
   const dir = project();
   const daemon = new SupervisorDaemon({ projectPath: dir, dbPath: ":memory:" });
-  daemon.handleHookPayload({ hookEventName: "PreToolUse", sessionId: "fresh", cwd: dir, toolName: "Read", toolInput: { file_path: "a.ts" } });
-  daemon.handleHookPayload({ hookEventName: "PostToolUse", sessionId: "fresh", cwd: dir, toolName: "Read", toolResponse: { ok: true } });
+  daemon.handleHookPayload({
+    hookEventName: "PreToolUse",
+    sessionId: "fresh",
+    cwd: dir,
+    toolName: "Read",
+    toolInput: { file_path: "a.ts" },
+  });
+  daemon.handleHookPayload({
+    hookEventName: "PostToolUse",
+    sessionId: "fresh",
+    cwd: dir,
+    toolName: "Read",
+    toolResponse: { ok: true },
+  });
 
   const events = daemon.getStorage().listEventsForSession("fresh");
   assert.equal(events.length, 2);
-  assert.deepEqual(events.map((e) => e.eventType), ["pre_tool", "post_tool"]);
+  assert.deepEqual(
+    events.map((e) => e.eventType),
+    ["pre_tool", "post_tool"],
+  );
   assert.ok(daemon.getStorage().getSession("fresh"));
 });
 
@@ -25,7 +40,10 @@ test("regression: Stop and UserPromptSubmit are recorded as themselves, not as p
   const daemon = new SupervisorDaemon({ projectPath: dir, dbPath: ":memory:" });
   daemon.handleHookPayload({ hookEventName: "UserPromptSubmit", sessionId: "s", cwd: dir, prompt: "fix the bug" });
   daemon.handleHookPayload({ hookEventName: "Stop", sessionId: "s", cwd: dir });
-  const types = daemon.getStorage().listEventsForSession("s").map((e) => e.eventType);
+  const types = daemon
+    .getStorage()
+    .listEventsForSession("s")
+    .map((e) => e.eventType);
   assert.deepEqual(types, ["user_prompt", "stop"]);
 });
 
@@ -43,9 +61,21 @@ test("regression: repeated identical failures in PostToolUse trip the loop break
   fail("a");
   fail("a");
   fail("a");
-  const next = daemon.handleHookPayload({ hookEventName: "PreToolUse", sessionId: "a", cwd: dir, toolName: "Bash", toolInput: { command: "npm test" } });
+  const next = daemon.handleHookPayload({
+    hookEventName: "PreToolUse",
+    sessionId: "a",
+    cwd: dir,
+    toolName: "Bash",
+    toolInput: { command: "npm test" },
+  });
   assert.equal(next.decision, "REQUIRE_MANUAL_APPROVAL");
 
-  const other = daemon.handleHookPayload({ hookEventName: "PreToolUse", sessionId: "b", cwd: dir, toolName: "Bash", toolInput: { command: "npm test" } });
+  const other = daemon.handleHookPayload({
+    hookEventName: "PreToolUse",
+    sessionId: "b",
+    cwd: dir,
+    toolName: "Bash",
+    toolInput: { command: "npm test" },
+  });
   assert.equal(other.decision, "ALLOW");
 });

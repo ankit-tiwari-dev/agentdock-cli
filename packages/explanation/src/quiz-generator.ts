@@ -57,4 +57,3 @@ export function generateSocraticQuiz(rawDiff: string): ComprehensionQuestion[] {
 
   return questions;
 }
-

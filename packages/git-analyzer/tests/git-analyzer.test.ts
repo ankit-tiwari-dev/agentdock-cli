@@ -1,12 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  parseUnifiedDiff,
-  classifyFile,
-  isTestFile,
-  isSensitiveFile,
-  analyzeTestDiff,
-} from "../src/index.ts";
+import { parseUnifiedDiff, classifyFile, isTestFile, isSensitiveFile, analyzeTestDiff } from "../src/index.ts";
 
 test("File classifier correctly identifies file types", () => {
   assert.equal(isTestFile("src/routes/auth.test.ts"), true);
@@ -90,4 +84,3 @@ index 0000000..a1b2c3d
   assert.equal(analysis.isNewTestFile, true);
   assert.equal(analysis.isTamperingDetected, false); // Safe!
 });
-

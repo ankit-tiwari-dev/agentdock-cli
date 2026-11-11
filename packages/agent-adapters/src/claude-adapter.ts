@@ -24,7 +24,10 @@ export const CLAUDE_HOOK_EVENTS: HookEventSpec[] = [
  * and the local file is the one Claude Code keeps out of version control. Earlier versions wrote
  * a wrong-shaped entry into `settings.json`; those are removed from both files.
  */
-export function injectClaudeHooks(projectPath: string, cliCommand = defaultHookCommand()): {
+export function injectClaudeHooks(
+  projectPath: string,
+  cliCommand = defaultHookCommand(),
+): {
   success: boolean;
   settingsPath: string;
   backupPath?: string;
@@ -46,7 +49,11 @@ export function injectClaudeHooks(projectPath: string, cliCommand = defaultHookC
   const settings = local.data;
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
 
-  const added = mergeHookGroups(settings.hooks as Record<string, unknown>, CLAUDE_HOOK_EVENTS, (event) => `${cliCommand} ${event}`);
+  const added = mergeHookGroups(
+    settings.hooks as Record<string, unknown>,
+    CLAUDE_HOOK_EVENTS,
+    (event) => `${cliCommand} ${event}`,
+  );
   const written = writeJsonIfChanged(settingsPath, settings, local.raw);
 
   return {

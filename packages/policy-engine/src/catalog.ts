@@ -40,7 +40,12 @@ function currentBranch(root: string): string | null {
 
 function git(root: string, args: string[]): string | null {
   try {
-    return execFileSync("git", args, { cwd: root, encoding: "utf8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] });
+    return execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 10000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
   } catch {
     return null;
   }
@@ -51,7 +56,8 @@ const INFRA_TOOLS: { id: string; name: string; bins: string[]; mutating: RegExp 
     id: "RULE-INFRA-KUBECTL",
     name: "Kubernetes changes need approval",
     bins: ["kubectl", "oc"],
-    mutating: /\b(apply|create|delete|edit|patch|replace|scale|rollout|drain|cordon|taint|label|annotate|set|exec|cp)\b/,
+    mutating:
+      /\b(apply|create|delete|edit|patch|replace|scale|rollout|drain|cordon|taint|label|annotate|set|exec|cp)\b/,
   },
   {
     id: "RULE-INFRA-TERRAFORM",
@@ -69,7 +75,8 @@ const INFRA_TOOLS: { id: string; name: string; bins: string[]; mutating: RegExp 
     id: "RULE-INFRA-CLOUD-CLI",
     name: "Cloud CLI changes need approval",
     bins: ["aws", "gcloud", "az", "doctl", "flyctl", "vercel", "netlify", "heroku"],
-    mutating: /\b(create|delete|remove|rm|update|put|set|deploy|terminate|stop|start|restart|destroy|attach|detach|modify|scale|purge)\b/,
+    mutating:
+      /\b(create|delete|remove|rm|update|put|set|deploy|terminate|stop|start|restart|destroy|attach|detach|modify|scale|purge)\b/,
   },
 ];
 
@@ -77,12 +84,14 @@ export const EXTENDED_RULES: PolicyRule[] = [
   {
     id: "RULE-BLOCK-ENV-DUMP",
     name: "Block environment variable dumps",
-    description: "Stops `env`, `printenv`, `set` and similar from printing every secret in the environment into the transcript.",
+    description:
+      "Stops `env`, `printenv`, `set` and similar from printing every secret in the environment into the transcript.",
     event: "PreToolUse",
     category: "secrets",
     targetTools: ["Bash"],
     action: "DENY",
-    message: "Security Policy: dumping all environment variables would copy secrets into the conversation. Read the one variable you need, by name.",
+    message:
+      "Security Policy: dumping all environment variables would copy secrets into the conversation. Read the one variable you need, by name.",
     check: (ctx) => {
       const sub = firstSub(ctx, (s, t) => {
         const bin = (t[0] ?? "").toLowerCase();
@@ -92,7 +101,11 @@ export const EXTENDED_RULES: PolicyRule[] = [
         if (/^(get-childitem|gci|dir|ls)$/.test(bin) && /^env:\\?$/i.test(t[1] ?? "")) return true;
         return /process\.env\)|os\.environ\b(?!\[|\.get)/.test(s);
       });
-      return sub ? { message: `Security Policy: dumping all environment variables would copy secrets into the conversation. (Triggered by command: '${sub}')` } : null;
+      return sub
+        ? {
+            message: `Security Policy: dumping all environment variables would copy secrets into the conversation. (Triggered by command: '${sub}')`,
+          }
+        : null;
     },
   },
   {
@@ -103,11 +116,18 @@ export const EXTENDED_RULES: PolicyRule[] = [
     category: "destructive",
     targetTools: ["Bash"],
     action: "DENY",
-    message: "Security Policy: piping a download straight into a shell runs unreviewed code. Download the script to a file and inspect it first.",
+    message:
+      "Security Policy: piping a download straight into a shell runs unreviewed code. Download the script to a file and inspect it first.",
     check: (ctx) => {
       const cmd = ctx.command ?? "";
-      if (/\b(curl|wget|iwr|invoke-webrequest|irm|invoke-restmethod)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|python3?|node|iex|invoke-expression|pwsh|powershell)\b/i.test(cmd)) {
-        return { message: `Security Policy: piping a download straight into a shell runs unreviewed code. (Triggered by command: '${cmd}')` };
+      if (
+        /\b(curl|wget|iwr|invoke-webrequest|irm|invoke-restmethod)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|python3?|node|iex|invoke-expression|pwsh|powershell)\b/i.test(
+          cmd,
+        )
+      ) {
+        return {
+          message: `Security Policy: piping a download straight into a shell runs unreviewed code. (Triggered by command: '${cmd}')`,
+        };
       }
       return null;
     },
@@ -136,7 +156,8 @@ export const EXTENDED_RULES: PolicyRule[] = [
     targetTools: ["Bash"],
     action: "REQUIRE_MANUAL_APPROVAL",
     params: { protectedBranches: ["main", "master", "production", "prod", "release"] },
-    message: "Pushing to a protected branch requires developer approval. Push a feature branch and open a pull request instead.",
+    message:
+      "Pushing to a protected branch requires developer approval. Push a feature branch and open a pull request instead.",
     check: (ctx, params) => {
       const branches = list(params, "protectedBranches");
       for (const sub of ctx.subCommands) {
@@ -144,9 +165,15 @@ export const EXTENDED_RULES: PolicyRule[] = [
         if (!g || g.verb !== "push") continue;
         const positional = g.args.filter((a) => !a.startsWith("-"));
         const refs = positional.slice(1);
-        const targets = refs.length > 0 ? refs.map((r) => r.replace(/^\+/, "").split(":").pop() ?? r) : [currentBranch(ctx.projectRoot) ?? ""];
+        const targets =
+          refs.length > 0
+            ? refs.map((r) => r.replace(/^\+/, "").split(":").pop() ?? r)
+            : [currentBranch(ctx.projectRoot) ?? ""];
         const hit = targets.find((t) => branches.includes(t.replace(/^refs\/heads\//, "")));
-        if (hit) return { message: `Pushing to protected branch '${hit}' requires developer approval. Push a feature branch and open a pull request instead. (Triggered by command: '${sub}')` };
+        if (hit)
+          return {
+            message: `Pushing to protected branch '${hit}' requires developer approval. Push a feature branch and open a pull request instead. (Triggered by command: '${sub}')`,
+          };
       }
       return null;
     },
@@ -169,7 +196,11 @@ export const EXTENDED_RULES: PolicyRule[] = [
         const g = gitSubcommand(s);
         return !!g && (g.verb === "commit" || g.verb === "merge" || g.verb === "rebase" || g.verb === "cherry-pick");
       });
-      return sub ? { message: `You are on protected branch '${branch}'. Create a feature branch before committing. (Triggered by command: '${sub}')` } : null;
+      return sub
+        ? {
+            message: `You are on protected branch '${branch}'. Create a feature branch before committing. (Triggered by command: '${sub}')`,
+          }
+        : null;
     },
   },
   {
@@ -184,15 +215,25 @@ export const EXTENDED_RULES: PolicyRule[] = [
     check: (ctx) => {
       const sub = firstSub(ctx, (s) => {
         const g = gitSubcommand(s);
-        return !!g && (g.verb === "commit" || g.verb === "push" || g.verb === "merge") && (g.args.includes("--no-verify") || (g.verb === "commit" && g.args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a))));
+        return (
+          !!g &&
+          (g.verb === "commit" || g.verb === "push" || g.verb === "merge") &&
+          (g.args.includes("--no-verify") ||
+            (g.verb === "commit" && g.args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a))))
+        );
       });
-      return sub ? { message: `Skipping git hooks is not allowed. Fix what the hook reports instead. (Triggered by command: '${sub}')` } : null;
+      return sub
+        ? {
+            message: `Skipping git hooks is not allowed. Fix what the hook reports instead. (Triggered by command: '${sub}')`,
+          }
+        : null;
     },
   },
   {
     id: "RULE-GIT-DISCARD-WORK",
     name: "Ask before discarding uncommitted work",
-    description: "`git checkout -- .`, `git restore .`, `git stash drop/clear`, `git branch -D` lose work that may not be the agent's.",
+    description:
+      "`git checkout -- .`, `git restore .`, `git stash drop/clear`, `git branch -D` lose work that may not be the agent's.",
     event: "PreToolUse",
     category: "git",
     targetTools: ["Bash"],
@@ -202,14 +243,25 @@ export const EXTENDED_RULES: PolicyRule[] = [
       const sub = firstSub(ctx, (s) => {
         const g = gitSubcommand(s);
         if (!g) return false;
-        if (g.verb === "checkout" && g.args.includes("--") && g.args.slice(g.args.indexOf("--") + 1).some((a) => a === "." || a === "*")) return true;
+        if (
+          g.verb === "checkout" &&
+          g.args.includes("--") &&
+          g.args.slice(g.args.indexOf("--") + 1).some((a) => a === "." || a === "*")
+        )
+          return true;
         if (g.verb === "checkout" && g.args.includes(".") && !g.args.includes("-b")) return true;
-        if (g.verb === "restore" && !g.args.includes("--staged") && g.args.some((a) => a === "." || a === "*")) return true;
+        if (g.verb === "restore" && !g.args.includes("--staged") && g.args.some((a) => a === "." || a === "*"))
+          return true;
         if (g.verb === "stash" && (g.args[0] === "drop" || g.args[0] === "clear")) return true;
-        if (g.verb === "branch" && (g.args.includes("-D") || (g.args.includes("-d") && g.args.includes("--force")))) return true;
+        if (g.verb === "branch" && (g.args.includes("-D") || (g.args.includes("-d") && g.args.includes("--force"))))
+          return true;
         return false;
       });
-      return sub ? { message: `This git command discards work that may not be yours. Developer approval required. (Triggered by command: '${sub}')` } : null;
+      return sub
+        ? {
+            message: `This git command discards work that may not be yours. Developer approval required. (Triggered by command: '${sub}')`,
+          }
+        : null;
     },
   },
   {
@@ -226,7 +278,9 @@ export const EXTENDED_RULES: PolicyRule[] = [
         const g = gitSubcommand(s);
         return !!g && g.verb === "commit" && g.args.includes("--amend");
       });
-      return sub ? { message: "Prefer a new commit over --amend: amending rewrites history that may already be pushed." } : null;
+      return sub
+        ? { message: "Prefer a new commit over --amend: amending rewrites history that may already be pushed." }
+        : null;
     },
   },
   {
@@ -237,13 +291,19 @@ export const EXTENDED_RULES: PolicyRule[] = [
     category: "git",
     targetTools: ["Bash"],
     action: "INSTRUCT",
-    message: "Stage files by name. `git add -A` or `git add .` can sweep in unrelated changes, build output or secrets.",
+    message:
+      "Stage files by name. `git add -A` or `git add .` can sweep in unrelated changes, build output or secrets.",
     check: (ctx) => {
       const sub = firstSub(ctx, (s) => {
         const g = gitSubcommand(s);
         return !!g && g.verb === "add" && g.args.some((a) => a === "-A" || a === "--all" || a === "." || a === "-u");
       });
-      return sub ? { message: "Stage files by name: `git add -A` / `git add .` can sweep in unrelated changes, build output or secrets." } : null;
+      return sub
+        ? {
+            message:
+              "Stage files by name: `git add -A` / `git add .` can sweep in unrelated changes, build output or secrets.",
+          }
+        : null;
     },
   },
   {
@@ -261,29 +321,39 @@ export const EXTENDED_RULES: PolicyRule[] = [
         ctx,
         (s, t) =>
           t[0] === "gh" &&
-          /^(pr\s+(merge|close)|release\s+(create|delete|edit)|workflow\s+(run|enable|disable)|secret\s+(set|delete)|variable\s+(set|delete)|repo\s+(delete|archive|edit|rename))\b/.test(t.slice(1, 3).join(" ")) &&
+          /^(pr\s+(merge|close)|release\s+(create|delete|edit)|workflow\s+(run|enable|disable)|secret\s+(set|delete)|variable\s+(set|delete)|repo\s+(delete|archive|edit|rename))\b/.test(
+            t.slice(1, 3).join(" "),
+          ) &&
           !allowedByPattern(s, params),
       );
-      return sub ? { message: `This GitHub action affects shared infrastructure. Developer approval required. (Triggered by command: '${sub}')` } : null;
+      return sub
+        ? {
+            message: `This GitHub action affects shared infrastructure. Developer approval required. (Triggered by command: '${sub}')`,
+          }
+        : null;
     },
   },
-  ...INFRA_TOOLS.map(
-    (tool): PolicyRule => ({
-      id: tool.id,
-      name: tool.name,
-      description: `Read-only ${tool.bins.join("/")} commands pass; anything that changes infrastructure asks first. Trusted commands go in params.allowPatterns.`,
-      event: "PreToolUse",
-      category: "infra",
-      targetTools: ["Bash"],
-      action: "REQUIRE_MANUAL_APPROVAL",
-      params: { allowPatterns: [] as string[] },
-      message: `${tool.name}.`,
-      check: (ctx, params) => {
-        const sub = firstSub(ctx, (s, t) => tool.bins.includes((t[0] ?? "").toLowerCase()) && tool.mutating.test(t.slice(1).join(" ")) && !allowedByPattern(s, params));
-        return sub ? { message: `${tool.name}. (Triggered by command: '${sub}')` } : null;
-      },
-    }),
-  ),
+  ...INFRA_TOOLS.map((tool): PolicyRule => ({
+    id: tool.id,
+    name: tool.name,
+    description: `Read-only ${tool.bins.join("/")} commands pass; anything that changes infrastructure asks first. Trusted commands go in params.allowPatterns.`,
+    event: "PreToolUse",
+    category: "infra",
+    targetTools: ["Bash"],
+    action: "REQUIRE_MANUAL_APPROVAL",
+    params: { allowPatterns: [] as string[] },
+    message: `${tool.name}.`,
+    check: (ctx, params) => {
+      const sub = firstSub(
+        ctx,
+        (s, t) =>
+          tool.bins.includes((t[0] ?? "").toLowerCase()) &&
+          tool.mutating.test(t.slice(1).join(" ")) &&
+          !allowedByPattern(s, params),
+      );
+      return sub ? { message: `${tool.name}. (Triggered by command: '${sub}')` } : null;
+    },
+  })),
   {
     id: "RULE-DB-DESTRUCTIVE-SQL",
     name: "Ask before destructive SQL",
@@ -292,7 +362,8 @@ export const EXTENDED_RULES: PolicyRule[] = [
     category: "database",
     targetTools: ["Bash"],
     action: "REQUIRE_MANUAL_APPROVAL",
-    message: "Destructive SQL needs developer approval. Count the affected rows first and scope the statement to explicit ids.",
+    message:
+      "Destructive SQL needs developer approval. Count the affected rows first and scope the statement to explicit ids.",
     check: (ctx) => {
       const cmd = ctx.command ?? "";
       const destructive =
@@ -301,7 +372,12 @@ export const EXTENDED_RULES: PolicyRule[] = [
         /\bupdate\s+[\w."`[\]]+\s+set\b(?![\s\S]*\bwhere\b)/i.test(cmd) ||
         /\.(drop|deleteMany|remove)\(\s*(\{\s*\})?\s*\)/.test(cmd) ||
         /\bflushall\b|\bflushdb\b/i.test(cmd);
-      return destructive ? { message: "Destructive database statement: developer approval required. Count the affected rows first and scope it to explicit ids." } : null;
+      return destructive
+        ? {
+            message:
+              "Destructive database statement: developer approval required. Count the affected rows first and scope it to explicit ids.",
+          }
+        : null;
     },
   },
   {
@@ -330,9 +406,21 @@ export const EXTENDED_RULES: PolicyRule[] = [
     check: (ctx) => {
       const sub = firstSub(ctx, (_s, t) => {
         const a = t.join(" ");
-        return /^(npm|pnpm|yarn|bun)\s+publish\b/.test(a) || /^cargo\s+publish\b/.test(a) || /^twine\s+upload\b/.test(a) || /^gem\s+push\b/.test(a) || /^(docker|podman)\s+push\b/.test(a) || /^poetry\s+publish\b/.test(a) || /^uv\s+publish\b/.test(a);
+        return (
+          /^(npm|pnpm|yarn|bun)\s+publish\b/.test(a) ||
+          /^cargo\s+publish\b/.test(a) ||
+          /^twine\s+upload\b/.test(a) ||
+          /^gem\s+push\b/.test(a) ||
+          /^(docker|podman)\s+push\b/.test(a) ||
+          /^poetry\s+publish\b/.test(a) ||
+          /^uv\s+publish\b/.test(a)
+        );
       });
-      return sub ? { message: `Publishing is public and permanent. Developer approval required. (Triggered by command: '${sub}')` } : null;
+      return sub
+        ? {
+            message: `Publishing is public and permanent. Developer approval required. (Triggered by command: '${sub}')`,
+          }
+        : null;
     },
   },
   {
@@ -355,13 +443,15 @@ export const EXTENDED_RULES: PolicyRule[] = [
           /^go\s+install\b/.test(a)
         );
       });
-      return sub ? { message: `Install as a project dependency instead of globally. (Triggered by command: '${sub}')` } : null;
+      return sub
+        ? { message: `Install as a project dependency instead of globally. (Triggered by command: '${sub}')` }
+        : null;
     },
   },
   {
     id: "RULE-PKG-MANAGER",
     name: "Use the project's package manager",
-    description: "Opt-in. Set params.allowed (e.g. [\"pnpm\"]) and other managers are blocked.",
+    description: 'Opt-in. Set params.allowed (e.g. ["pnpm"]) and other managers are blocked.',
     event: "PreToolUse",
     category: "packages",
     enabledByDefault: false,
@@ -390,7 +480,9 @@ export const EXTENDED_RULES: PolicyRule[] = [
     message: "File access outside the project is not allowed.",
     check: (ctx, params) => {
       const outside = ctx.filePaths.find((p) => isAbsolute(p) && !matchesAnyGlob(p, list(params, "allowPaths")));
-      return outside ? { message: `File access outside the project is not allowed. (Target file: '${outside}')` } : null;
+      return outside
+        ? { message: `File access outside the project is not allowed. (Target file: '${outside}')` }
+        : null;
     },
   },
   {
@@ -407,7 +499,9 @@ export const EXTENDED_RULES: PolicyRule[] = [
       const limit = Number(params.thresholdKb ?? 512) * 1024;
       const size = Buffer.byteLength(ctx.content ?? "", "utf8");
       return size > limit
-        ? { message: `This write is ${(size / 1024).toFixed(0)} KB. Generated or vendored output should not be hand-written into the repo; check this is intended.` }
+        ? {
+            message: `This write is ${(size / 1024).toFixed(0)} KB. Generated or vendored output should not be hand-written into the repo; check this is intended.`,
+          }
         : null;
     },
   },
@@ -423,7 +517,10 @@ export const EXTENDED_RULES: PolicyRule[] = [
     check: (ctx) => {
       const cmd = ctx.command ?? "";
       return /\bnohup\b|\bdisown\b|\bsetsid\b|Start-Process\b|&\s*$/.test(cmd.trim())
-        ? { message: "You started a detached background process. Note its PID and stop it before you finish so it does not hold ports or files." }
+        ? {
+            message:
+              "You started a detached background process. Note its PID and stop it before you finish so it does not hold ports or files.",
+          }
         : null;
     },
   },
@@ -446,7 +543,9 @@ export const EXTENDED_RULES: PolicyRule[] = [
           return false;
         }
       });
-      return hits.length ? { message: `Resolve the merge-conflict markers in: ${hits.slice(0, 10).join(", ")}.` } : null;
+      return hits.length
+        ? { message: `Resolve the merge-conflict markers in: ${hits.slice(0, 10).join(", ")}.` }
+        : null;
     },
   },
   {
@@ -462,7 +561,11 @@ export const EXTENDED_RULES: PolicyRule[] = [
       if (ctx.permissionMode === "plan") return null;
       const status = git(ctx.projectRoot, ["status", "--porcelain"]);
       if (!status || !status.trim()) return null;
-      const files = status.trim().split(/\r?\n/).slice(0, 8).map((l) => l.slice(3));
+      const files = status
+        .trim()
+        .split(/\r?\n/)
+        .slice(0, 8)
+        .map((l) => l.slice(3));
       return { message: `Commit your changes before finishing (uncommitted: ${files.join(", ")}).` };
     },
   },

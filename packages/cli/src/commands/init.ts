@@ -1,11 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SpecManager } from "../../../intent/src/index.ts";
-import {
-  injectClaudeHooks,
-  injectCodexHooks,
-  injectOpenCodePlugin,
-} from "../../../agent-adapters/src/index.ts";
+import { injectClaudeHooks, injectCodexHooks, injectOpenCodePlugin } from "../../../agent-adapters/src/index.ts";
 import { DEFAULT_PROJECT_CONFIG } from "../../../policy-engine/src/config.ts";
 
 export function handleInit(options?: { projectPath?: string; agent?: string }): {
@@ -24,7 +20,17 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
   if (!existsSync(gitignorePath)) {
     writeFileSync(
       gitignorePath,
-      ["audit.db", "audit.db-*", "blobs/", "state/", "daemon.lock", "daemon.log", "dashboard.token", "*.local.json", ""].join("\n"),
+      [
+        "audit.db",
+        "audit.db-*",
+        "blobs/",
+        "state/",
+        "daemon.lock",
+        "daemon.log",
+        "dashboard.token",
+        "*.local.json",
+        "",
+      ].join("\n"),
       "utf8",
     );
   }
@@ -50,12 +56,16 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
 
   if (targetAgent === "codex" || targetAgent === "all") {
     const codexRes = injectCodexHooks(projectPath);
-    messages.push(`Codex CLI: Installed ${codexRes.addedHooksCount} hook(s) in .codex/hooks.json (approve them once in Codex: "Review hooks").`);
+    messages.push(
+      `Codex CLI: Installed ${codexRes.addedHooksCount} hook(s) in .codex/hooks.json (approve them once in Codex: "Review hooks").`,
+    );
   }
 
   if (targetAgent === "opencode" || targetAgent === "all") {
     const openRes = injectOpenCodePlugin(projectPath);
-    messages.push(`OpenCode: Plugin at .opencode/plugins/ctrlplane.mjs (${openRes.pluginAdded ? "added" : "already present"}).`);
+    messages.push(
+      `OpenCode: Plugin at .opencode/plugins/ctrlplane.mjs (${openRes.pluginAdded ? "added" : "already present"}).`,
+    );
   }
 
   return {
@@ -63,4 +73,3 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
     message: messages.join("\n"),
   };
 }
-

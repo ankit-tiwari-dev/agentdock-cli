@@ -75,13 +75,16 @@ export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
 
     for (const [id, o] of Object.entries(file.rules ?? {})) {
       if (!o || typeof o !== "object") continue;
-      if (o.mode !== undefined && !VALID_MODES.includes(o.mode)) throw new Error(`${path}: rule ${id} has unknown mode '${o.mode}'`);
-      if (o.action !== undefined && !VALID_ACTIONS.includes(o.action)) throw new Error(`${path}: rule ${id} has unknown action '${o.action}'`);
+      if (o.mode !== undefined && !VALID_MODES.includes(o.mode))
+        throw new Error(`${path}: rule ${id} has unknown mode '${o.mode}'`);
+      if (o.action !== undefined && !VALID_ACTIONS.includes(o.action))
+        throw new Error(`${path}: rule ${id} has unknown action '${o.action}'`);
       const prev = resolved.overrides[id] ?? {};
       resolved.overrides[id] = { ...prev, ...o, params: { ...(prev.params ?? {}), ...(o.params ?? {}) } };
     }
     if (file.customRulesFile && scope !== "user") resolved.customRulesFile = resolve(projectRoot, file.customRulesFile);
-    if (file.customRulesFile && scope === "user") resolved.customRulesFile = resolve(dirname(path), file.customRulesFile);
+    if (file.customRulesFile && scope === "user")
+      resolved.customRulesFile = resolve(dirname(path), file.customRulesFile);
     Object.assign(resolved.loopBreaker, file.loopBreaker ?? {});
     Object.assign(resolved.context, file.context ?? {});
     Object.assign(resolved.budget, file.budget ?? {});
@@ -115,7 +118,12 @@ export async function loadCustomRules(file: string | undefined): Promise<PolicyR
   return rules as PolicyRule[];
 }
 
-export function updateRuleOverride(projectRoot: string, scope: ConfigScope, ruleId: string, patch: RuleOverride): string {
+export function updateRuleOverride(
+  projectRoot: string,
+  scope: ConfigScope,
+  ruleId: string,
+  patch: RuleOverride,
+): string {
   const path = configPath(projectRoot, scope);
   const file = readConfigFile(path) ?? { version: 1, rules: {} };
   file.rules = file.rules ?? {};

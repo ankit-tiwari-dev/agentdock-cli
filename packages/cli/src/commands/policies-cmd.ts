@@ -43,7 +43,11 @@ const LABEL: Record<PolicyAction, string> = {
   INSTRUCT: "steer",
 };
 
-export async function handlePoliciesCommand(sub: string | undefined, args: string[], projectPath = process.cwd()): Promise<CommandResult> {
+export async function handlePoliciesCommand(
+  sub: string | undefined,
+  args: string[],
+  projectPath = process.cwd(),
+): Promise<CommandResult> {
   const root = resolve(projectPath);
   const project = await buildProjectEngine(root);
   const engine = project.engine;
@@ -87,17 +91,29 @@ export async function handlePoliciesCommand(sub: string | undefined, args: strin
     const rule = rules.find((r) => r.id === args[0]);
     if (!rule) return { output: `Unknown rule '${args[0] ?? ""}'.`, exitCode: 2 };
     if (rule.alwaysOn && sub !== "enable" && sub !== "enforce") {
-      return { output: `${rule.id} is always-on: it protects the supervisor itself and cannot be ${sub}d.`, exitCode: 2 };
+      return {
+        output: `${rule.id} is always-on: it protects the supervisor itself and cannot be ${sub}d.`,
+        exitCode: 2,
+      };
     }
-    const patch = sub === "enable" ? { enabled: true } : sub === "disable" ? { enabled: false } : { mode: sub as "observe" | "enforce", enabled: true };
+    const patch =
+      sub === "enable"
+        ? { enabled: true }
+        : sub === "disable"
+          ? { enabled: false }
+          : { mode: sub as "observe" | "enforce", enabled: true };
     const path = updateRuleOverride(root, scopeOf(args), rule.id, patch);
-    return { output: `${rule.id}: ${sub === "observe" ? "observe mode (logs 'would block', never blocks)" : sub + "d"} in ${path}`, exitCode: 0 };
+    return {
+      output: `${rule.id}: ${sub === "observe" ? "observe mode (logs 'would block', never blocks)" : sub + "d"} in ${path}`,
+      exitCode: 0,
+    };
   }
 
   if (sub === "set") {
     const [id, param, raw] = args;
     const rule = rules.find((r) => r.id === id);
-    if (!rule || !param || raw === undefined) return { output: "Usage: ctrlplane policies set <rule-id> <param> <json-value> [--local|--user]", exitCode: 2 };
+    if (!rule || !param || raw === undefined)
+      return { output: "Usage: ctrlplane policies set <rule-id> <param> <json-value> [--local|--user]", exitCode: 2 };
     let value: unknown;
     try {
       value = JSON.parse(raw);
@@ -107,7 +123,10 @@ export async function handlePoliciesCommand(sub: string | undefined, args: strin
     const current = engine.resolveRule(rule).params;
     const known = Object.keys(rule.params ?? {});
     if (!known.includes(param)) {
-      return { output: `${id} has no param '${param}'. Known: ${known.length ? known.join(", ") : "(none)"}`, exitCode: 2 };
+      return {
+        output: `${id} has no param '${param}'. Known: ${known.length ? known.join(", ") : "(none)"}`,
+        exitCode: 2,
+      };
     }
     const path = updateRuleOverride(root, scopeOf(args), id, { params: { ...current, [param]: value } });
     return { output: `${id}.${param} = ${JSON.stringify(value)} in ${path}`, exitCode: 0 };
@@ -120,16 +139,30 @@ export async function handlePoliciesCommand(sub: string | undefined, args: strin
     const event = flag(args, "--event") ?? "PreToolUse";
     const expect = flag(args, "--expect");
     if (!command && !file && event === "PreToolUse") {
-      return { output: 'Usage: ctrlplane policies test --command "git push --force" [--expect deny]  |  --file path [--tool Edit]', exitCode: 2 };
+      return {
+        output:
+          'Usage: ctrlplane policies test --command "git push --force" [--expect deny]  |  --file path [--tool Edit]',
+        exitCode: 2,
+      };
     }
     const toolInput: Record<string, unknown> = {};
     if (command) toolInput.command = command;
     if (file) toolInput.file_path = file;
     if (flag(args, "--content")) toolInput.content = flag(args, "--content");
 
-    const result = engine.evaluate({ event, toolName: tool, toolInput, projectRoot: root, breaker: project.newBreaker() });
-    const lines = [`Decision: ${LABEL[result.decision]}${result.matchedRuleId ? `  (rule ${result.matchedRuleId})` : ""}`, `Reason:   ${result.reason}`];
-    for (const o of result.observed ?? []) lines.push(`Observed: ${o.ruleId} would ${LABEL[o.wouldDecide]} — ${o.reason}`);
+    const result = engine.evaluate({
+      event,
+      toolName: tool,
+      toolInput,
+      projectRoot: root,
+      breaker: project.newBreaker(),
+    });
+    const lines = [
+      `Decision: ${LABEL[result.decision]}${result.matchedRuleId ? `  (rule ${result.matchedRuleId})` : ""}`,
+      `Reason:   ${result.reason}`,
+    ];
+    for (const o of result.observed ?? [])
+      lines.push(`Observed: ${o.ruleId} would ${LABEL[o.wouldDecide]} — ${o.reason}`);
 
     if (expect) {
       const wanted = EXPECT[expect.toLowerCase()];
@@ -156,5 +189,8 @@ export function handlePauseCommand(args: string[], projectPath = process.cwd()):
 }
 
 export function handleResumeCommand(projectPath = process.cwd()): CommandResult {
-  return { output: clearPause(resolve(projectPath)) ? "Supervision resumed." : "Supervision was not paused.", exitCode: 0 };
+  return {
+    output: clearPause(resolve(projectPath)) ? "Supervision resumed." : "Supervision was not paused.",
+    exitCode: 0,
+  };
 }

@@ -50,4 +50,3 @@ export function validateSession(session: unknown): session is Session {
     typeof s.startedAt === "number"
   );
 }
-

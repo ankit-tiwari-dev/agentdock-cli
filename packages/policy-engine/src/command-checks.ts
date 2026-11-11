@@ -46,7 +46,8 @@ const TEMP_ROOTS = [tmpdir(), "/tmp", "/var/tmp"].map((p) => p.replace(/\\/g, "/
 export function isCatastrophicTarget(target: string, projectRoot: string): boolean {
   const x = target.replace(/\\/g, "/").replace(/\/+$/, "") || "/";
   if (["/", "/*", "~", "~/*", "*", ".", "./*", "$HOME", "${HOME}", "%USERPROFILE%"].includes(x)) return true;
-  if (x.startsWith("~") || x.startsWith("$HOME") || x.startsWith("${HOME}") || x.startsWith("%USERPROFILE%")) return true;
+  if (x.startsWith("~") || x.startsWith("$HOME") || x.startsWith("${HOME}") || x.startsWith("%USERPROFILE%"))
+    return true;
   if (x === ".." || x.startsWith("../") || x.includes("/../")) return true;
   if (x === ".git" || x.startsWith(".git/") || x.endsWith("/.git")) return true;
 
@@ -109,8 +110,30 @@ export function isDiskWipe(sub: string): boolean {
 }
 
 const READERS = new Set([
-  "cat", "less", "more", "head", "tail", "type", "get-content", "gc", "bat", "nl", "strings",
-  "base64", "xxd", "od", "grep", "rg", "awk", "sed", "cp", "scp", "rsync", "source", ".", "open",
+  "cat",
+  "less",
+  "more",
+  "head",
+  "tail",
+  "type",
+  "get-content",
+  "gc",
+  "bat",
+  "nl",
+  "strings",
+  "base64",
+  "xxd",
+  "od",
+  "grep",
+  "rg",
+  "awk",
+  "sed",
+  "cp",
+  "scp",
+  "rsync",
+  "source",
+  ".",
+  "open",
 ]);
 
 /** A shell command that reads or copies a secrets file. */
@@ -130,7 +153,8 @@ export function readsSensitiveFile(sub: string): string | null {
   return null;
 }
 
-const WRITE_OPS = /(?:^|\s)(?:>>?|tee\b|rm\b|mv\b|cp\b|sed\s+-i|truncate\b|chmod\b|ln\b|Set-Content\b|Out-File\b|Remove-Item\b|Move-Item\b|Copy-Item\b|New-Item\b)/i;
+const WRITE_OPS =
+  /(?:^|\s)(?:>>?|tee\b|rm\b|mv\b|cp\b|sed\s+-i|truncate\b|chmod\b|ln\b|Set-Content\b|Out-File\b|Remove-Item\b|Move-Item\b|Copy-Item\b|New-Item\b)/i;
 
 /** A shell command that writes, moves or deletes something under one of `dirs` (e.g. `.ctrlplane/`). */
 export function writesUnder(sub: string, dirs: string[]): string | null {

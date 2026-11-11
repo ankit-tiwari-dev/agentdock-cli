@@ -60,7 +60,9 @@ export async function handleRunDaemon(projectPath = process.cwd()): Promise<numb
   }
   const daemon = new SupervisorDaemon({ projectPath: root, projectEngine });
   const endpoint = await daemon.start();
-  console.log(`[ctrlplane daemon] pid=${process.pid} ipc=${endpoint.path ?? `${endpoint.host}:${endpoint.port}`} started=${new Date().toISOString()}`);
+  console.log(
+    `[ctrlplane daemon] pid=${process.pid} ipc=${endpoint.path ?? `${endpoint.host}:${endpoint.port}`} started=${new Date().toISOString()}`,
+  );
 
   await new Promise<void>((done) => {
     daemon.waitForShutdownRequest().then(done);

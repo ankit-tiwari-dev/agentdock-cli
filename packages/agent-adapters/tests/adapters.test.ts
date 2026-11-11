@@ -19,7 +19,7 @@ test("HookClient fails open in dev mode when daemon is not running", async () =>
       toolName: "Bash",
       toolInput: { command: "ls" },
     },
-    { projectPath: "/nonexistent/path", ciMode: false }
+    { projectPath: "/nonexistent/path", ciMode: false },
   );
 
   assert.equal(res.exitCode, 0);
@@ -35,7 +35,7 @@ test("HookClient fails close in CI mode when daemon is not running", async () =>
       toolName: "Bash",
       toolInput: { command: "ls" },
     },
-    { projectPath: "/nonexistent/path", ciMode: true }
+    { projectPath: "/nonexistent/path", ciMode: true },
   );
 
   assert.equal(res.exitCode, 2);
@@ -50,11 +50,18 @@ test("ClaudeAdapter writes Claude Code's real hook shape into settings.local.jso
   mkdirSync(claudeDir, { recursive: true });
 
   const userHook = { matcher: "Bash", hooks: [{ type: "command", command: "./my-custom-script.sh" }] };
-  writeFileSync(join(claudeDir, "settings.local.json"), JSON.stringify({ theme: "dark", hooks: { PreToolUse: [userHook] } }, null, 2));
+  writeFileSync(
+    join(claudeDir, "settings.local.json"),
+    JSON.stringify({ theme: "dark", hooks: { PreToolUse: [userHook] } }, null, 2),
+  );
   // An entry in the old, wrong shape from an earlier ctrlplane init, sitting in the shared file.
   writeFileSync(
     join(claudeDir, "settings.json"),
-    JSON.stringify({ model: "x", hooks: { PreToolUse: [{ matcher: "*", command: "npx ctrlplane hook PreToolUse" }] } }, null, 2),
+    JSON.stringify(
+      { model: "x", hooks: { PreToolUse: [{ matcher: "*", command: "npx ctrlplane hook PreToolUse" }] } },
+      null,
+      2,
+    ),
   );
 
   const result = injectClaudeHooks(tmpDir, "ctrlplane hook");

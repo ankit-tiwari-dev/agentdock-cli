@@ -61,7 +61,8 @@ function nestedScripts(cmd: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = subst.exec(cmd)) !== null) found.push(m[1] ?? m[2] ?? "");
 
-  const dashC = /\b(?:bash|sh|zsh|pwsh|powershell|cmd)(?:\.exe)?\s+(?:-l\s+)?(?:-c|-lc|\/c|-Command)\s+(["'])([\s\S]*?)\1/g;
+  const dashC =
+    /\b(?:bash|sh|zsh|pwsh|powershell|cmd)(?:\.exe)?\s+(?:-l\s+)?(?:-c|-lc|\/c|-Command)\s+(["'])([\s\S]*?)\1/g;
   while ((m = dashC.exec(cmd)) !== null) found.push(m[2]);
   return found.filter((s) => s.trim().length > 0);
 }

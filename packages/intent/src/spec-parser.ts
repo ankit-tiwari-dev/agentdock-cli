@@ -1,9 +1,4 @@
-import type {
-  Specification,
-  AcceptanceCriterion,
-  CriterionCategory,
-  SpecStatus,
-} from "../../core/src/index.ts";
+import type { Specification, AcceptanceCriterion, CriterionCategory, SpecStatus } from "../../core/src/index.ts";
 import { computeSpecHash } from "../../core/src/index.ts";
 
 export interface ParsedSpecResult {
@@ -160,4 +155,3 @@ function categorizeCriterion(desc: string): CriterionCategory {
   }
   return "SEMANTIC_BEHAVIORAL";
 }
-

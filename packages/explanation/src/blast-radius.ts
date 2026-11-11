@@ -10,7 +10,7 @@ export function computeDiffBlastRadius(rawDiff: string): SymbolBlastRadius[] {
       for (const line of hunk.lines) {
         if (line.type === "add" || line.type === "delete") {
           const match = line.content.match(
-            /\b(?:export\s+)?(?:function|class|interface|type|const|let)\s+([a-zA-Z0-9_$]+)/
+            /\b(?:export\s+)?(?:function|class|interface|type|const|let)\s+([a-zA-Z0-9_$]+)/,
           );
           if (match) {
             const symbolName = match[1];
@@ -30,4 +30,3 @@ export function computeDiffBlastRadius(rawDiff: string): SymbolBlastRadius[] {
 
   return symbols;
 }
-

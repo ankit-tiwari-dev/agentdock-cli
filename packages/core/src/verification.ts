@@ -1,9 +1,4 @@
-export type VerdictState =
-  | "DETERMINISTIC_PASS"
-  | "SEMANTIC_VERIFIED"
-  | "DISCREPANCY"
-  | "UNCHECKED"
-  | "INCONCLUSIVE";
+export type VerdictState = "DETERMINISTIC_PASS" | "SEMANTIC_VERIFIED" | "DISCREPANCY" | "UNCHECKED" | "INCONCLUSIVE";
 
 export interface CodeEvidence {
   filePath: string;
@@ -44,4 +39,3 @@ export interface VerificationReport {
   summary: string;
   createdAt: number;
 }
-

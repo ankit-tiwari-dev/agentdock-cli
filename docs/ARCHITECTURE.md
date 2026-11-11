@@ -28,29 +28,29 @@ The daemon is an optimisation, not a dependency. Without it every hook still app
 
 Dependencies only point downwards. `core` depends on nothing, and `cli` sits on top.
 
-| Package | What it owns | Depends on |
-|---|---|---|
-| `core` | Shared types: hook payloads, events, sessions, verdicts, IPC messages, tool names, model pricing | nothing |
-| `storage` | SQLite database (`node:sqlite`): events, sessions, context entries, project memory with full-text search; secret redaction; gzip blob store for large payloads | core |
-| `git-analyzer` | Diff parsing, file classification, test-tamper detection, per-turn commit trailers | core |
-| `intent` | The project spec (`.ctrlplane/spec.md`): template, parser, approval | core, storage |
-| `policy-engine` | Rule catalog, layered config (user < project < local), pause, loop breaker, evaluator | core, git-analyzer |
-| `context` | Prompt intents, session summaries, handoffs, capability inventory, the SessionStart context pack | core, storage, intent, policy-engine |
-| `daemon` | Per-project supervisor process, IPC server, lock file | core, storage, policy-engine |
-| `agent-adapters` | Per-agent payload normalizers, hook install/uninstall, hook client, transcript backtracer | core, daemon |
-| `verifier` | Deterministic checks plus the criteria audit against the spec | core, git-analyzer, intent |
-| `explanation` | Diff explanation, blast radius, comprehension quiz, prompt coach | core, git-analyzer |
-| `cli` | The `ctrlplane` command and the hook entry point | all of the above |
+| Package          | What it owns                                                                                                                                                   | Depends on                           |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `core`           | Shared types: hook payloads, events, sessions, verdicts, IPC messages, tool names, model pricing                                                               | nothing                              |
+| `storage`        | SQLite database (`node:sqlite`): events, sessions, context entries, project memory with full-text search; secret redaction; gzip blob store for large payloads | core                                 |
+| `git-analyzer`   | Diff parsing, file classification, test-tamper detection, per-turn commit trailers                                                                             | core                                 |
+| `intent`         | The project spec (`.ctrlplane/spec.md`): template, parser, approval                                                                                            | core, storage                        |
+| `policy-engine`  | Rule catalog, layered config (user < project < local), pause, loop breaker, evaluator                                                                          | core, git-analyzer                   |
+| `context`        | Prompt intents, session summaries, handoffs, capability inventory, the SessionStart context pack                                                               | core, storage, intent, policy-engine |
+| `daemon`         | Per-project supervisor process, IPC server, lock file                                                                                                          | core, storage, policy-engine         |
+| `agent-adapters` | Per-agent payload normalizers, hook install/uninstall, hook client, transcript backtracer                                                                      | core, daemon                         |
+| `verifier`       | Deterministic checks plus the criteria audit against the spec                                                                                                  | core, git-analyzer, intent           |
+| `explanation`    | Diff explanation, blast radius, comprehension quiz, prompt coach                                                                                               | core, git-analyzer                   |
+| `cli`            | The `ctrlplane` command and the hook entry point                                                                                                               | all of the above                     |
 
 ## Where state lives
 
-| Path | Holds |
-|---|---|
-| `<project>/.ctrlplane/audit.db` | Events, sessions, context and memory for this project |
-| `<project>/.ctrlplane/blobs/` | Large tool payloads, gzip-compressed, named by SHA-256 |
-| `<project>/.ctrlplane/spec.md` | The developer's spec and its approval |
-| `<project>/.ctrlplane/policies.json`, `policies.local.json` | Project rule settings (shared, and personal) |
-| `<project>/.ctrlplane/daemon.lock` | PID and IPC address of the running daemon |
-| `$CTRLPLANE_HOME/policies.json` (default `~/.ctrlplane`) | The developer's own rule settings for every project |
+| Path                                                        | Holds                                                  |
+| ----------------------------------------------------------- | ------------------------------------------------------ |
+| `<project>/.ctrlplane/audit.db`                             | Events, sessions, context and memory for this project  |
+| `<project>/.ctrlplane/blobs/`                               | Large tool payloads, gzip-compressed, named by SHA-256 |
+| `<project>/.ctrlplane/spec.md`                              | The developer's spec and its approval                  |
+| `<project>/.ctrlplane/policies.json`, `policies.local.json` | Project rule settings (shared, and personal)           |
+| `<project>/.ctrlplane/daemon.lock`                          | PID and IPC address of the running daemon              |
+| `$CTRLPLANE_HOME/policies.json` (default `~/.ctrlplane`)    | The developer's own rule settings for every project    |
 
 Design rationale: `docs/DECISIONS.md`. Known traps: `docs/PITFALLS.md`.

@@ -355,7 +355,8 @@ export class SupervisorDaemon {
 const execFileAsync = promisify(execFile);
 
 async function readGitHead(cwd: string): Promise<{ branch: string; sha: string }> {
-  const run = async (args: string[]) => (await execFileAsync("git", args, { cwd, encoding: "utf8", timeout: 2000 })).stdout.trim();
+  const run = async (args: string[]) =>
+    (await execFileAsync("git", args, { cwd, encoding: "utf8", timeout: 2000 })).stdout.trim();
   try {
     return { branch: await run(["rev-parse", "--abbrev-ref", "HEAD"]), sha: await run(["rev-parse", "HEAD"]) };
   } catch {

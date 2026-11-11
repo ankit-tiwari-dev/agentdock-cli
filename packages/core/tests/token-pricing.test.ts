@@ -75,7 +75,11 @@ test("Token Pricing - cache reads are priced only when the model has a cache rat
   assert.equal(cached.costUsd, 0.3);
   assert.equal(cached.totalTokens, 1_000_000);
 
-  const uncached = calculateTurnCost({ modelName: "gemini-2.0-flash", inputTokens: 1_000_000, cacheReadTokens: 1_000_000 });
+  const uncached = calculateTurnCost({
+    modelName: "gemini-2.0-flash",
+    inputTokens: 1_000_000,
+    cacheReadTokens: 1_000_000,
+  });
   assert.equal(uncached.costUsd, 0.1);
   assert.equal(uncached.totalTokens, 2_000_000);
 });
