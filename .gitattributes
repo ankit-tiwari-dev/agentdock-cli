@@ -1,0 +1,7 @@
+# Every text file is stored and checked out with LF, whatever the machine's autocrlf setting.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.vsix binary
+*.db binary
+*.gz binary

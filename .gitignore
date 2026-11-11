@@ -19,3 +19,7 @@ tmp/
 .env.*
 !.env.example
 
+
+# Build outputs
+*.vsix
+*.tsbuildinfo
