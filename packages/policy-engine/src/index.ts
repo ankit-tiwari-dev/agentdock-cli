@@ -4,3 +4,6 @@ export * from "./evaluator.ts";
 export * from "./glob.ts";
 export * from "./shell.ts";
 export * from "./command-checks.ts";
+export * from "./catalog.ts";
+export * from "./config.ts";
+export * from "./project-engine.ts";

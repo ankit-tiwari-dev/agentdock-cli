@@ -23,7 +23,8 @@ export const AGENT_HOOK_CONFIG_FILES = [
   ".gemini/settings.json",
 ];
 
-const SUPERVISOR_OFF_SWITCH = /\bctrlplane(?:\.cmd|\.ps1)?\s+(?:stop|pause|uninstall|policies\s+(?:disable|off|observe))\b|\bbin\.ts["']?\s+(?:stop|pause|uninstall)\b/i;
+const OFF_SWITCH_VERBS = String.raw`(?:stop|pause|uninstall|policies\s+(?:disable|off|observe|set))\b`;
+const SUPERVISOR_OFF_SWITCH = new RegExp(String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${OFF_SWITCH_VERBS}|\bbin\.ts["']?\s+${OFF_SWITCH_VERBS}`, "i");
 
 export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
   {
@@ -62,6 +63,14 @@ export const DEFAULT_SAFETY_RULES: PolicyRule[] = [
     action: "DENY",
     message: "Access Denied: AI agents are strictly forbidden from modifying control plane configuration or Git internals.",
     check: (ctx) => {
+      const home = process.env.CTRLPLANE_HOME?.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+      if (home) {
+        const hit = ctx.filePaths.find((p) => {
+          const lower = p.toLowerCase();
+          return lower === home || lower.startsWith(`${home}/`);
+        });
+        if (hit) return { message: `Access Denied: AI agents cannot modify the user-level control plane config. (Target file: '${hit}')` };
+      }
       for (const sub of ctx.subCommands) {
         if (writesUnder(sub, [".ctrlplane/", ".git/"])) {
           return { message: `Access Denied: AI agents are strictly forbidden from modifying control plane configuration or Git internals. (Triggered by command: '${sub}')` };

@@ -8,7 +8,13 @@ import { handleHookCommand } from "./commands/hook-cmd.ts";
 import { handleCoachCommand } from "./commands/coach-cmd.ts";
 import { handleBacktraceCommand } from "./commands/backtrace-cmd.ts";
 import { handleCommitCommand } from "./commands/commit-cmd.ts";
+import { handlePauseCommand, handlePoliciesCommand, handleResumeCommand, type CommandResult } from "./commands/policies-cmd.ts";
 import { calculateTurnCost } from "../../core/src/token-pricing.ts";
+
+function print(res: CommandResult): number {
+  if (res.output) (res.exitCode === 2 ? console.error : console.log)(res.output);
+  return res.exitCode;
+}
 
 export async function runCli(args: string[]): Promise<number> {
   const command = args[0] || "help";
@@ -16,10 +22,25 @@ export async function runCli(args: string[]): Promise<number> {
 
   switch (command) {
     case "init": {
-      const res = handleInit();
+      const agentFlag = subArgs.indexOf("--agent");
+      const agent = agentFlag !== -1 ? subArgs[agentFlag + 1] : undefined;
+      if (agent && !["claude", "codex", "opencode", "all"].includes(agent.toLowerCase())) {
+        console.error(`Unknown --agent '${agent}'. Use claude, codex, opencode or all.`);
+        return 2;
+      }
+      const res = handleInit({ agent });
       console.log(res.message);
       return 0;
     }
+
+    case "policies":
+      return print(await handlePoliciesCommand(subArgs[0], subArgs.slice(1)));
+
+    case "pause":
+      return print(handlePauseCommand(subArgs));
+
+    case "resume":
+      return print(handleResumeCommand());
 
     case "start": {
       const msg = await handleStartDaemon();
@@ -108,10 +129,21 @@ USAGE:
   ctrlplane <command> [options]
 
 SUPERVISOR COMMANDS:
-  init                     Initialize .ctrlplane templates and inject agent hooks
+  init [--agent <name>]    Initialize .ctrlplane config and inject hooks (claude|codex|opencode|all)
   start                    Start supervisor daemon in background
   stop                     Stop running supervisor daemon
   status                   Display daemon health and active session status
+  pause [30m]              Pause supervision (max 8h per run); always-on rules still apply
+  resume                   End a pause early
+
+POLICY COMMANDS:
+  policies list                       Every rule with its state (enforce/observe/off)
+  policies show <id>                  One rule's description, outcome and params
+  policies enable|disable <id>        Switch a rule on or off      [--local|--user]
+  policies observe|enforce <id>       Log-only vs blocking mode    [--local|--user]
+  policies set <id> <param> <json>    Change a rule parameter      [--local|--user]
+  policies test --command "<cmd>" [--expect deny|ask|instruct|allow]
+                                      Dry-run a tool call; exits 1 if --expect fails
   spec <new|approve|show>  Manage specification and criteria
   verify                   Run two-tier verification against active spec
   explain                  Analyze diff blast radius, dependencies, and risks

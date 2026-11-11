@@ -6,6 +6,7 @@ import {
   injectCodexHooks,
   injectOpenCodePlugin,
 } from "../../../agent-adapters/src/index.ts";
+import { DEFAULT_PROJECT_CONFIG } from "../../../policy-engine/src/config.ts";
 
 export function handleInit(options?: { projectPath?: string; agent?: string }): {
   success: boolean;
@@ -32,23 +33,10 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
   const specManager = new SpecManager(projectPath);
   specManager.init("Project Control Plane Specification", "Define your feature requirements and criteria.");
 
-  // 2. Initialize default policies.yaml if not present
-  const policyPath = join(ctrlplaneDir, "policies.yaml");
+  // 2. Shared policy config (committed). Personal overrides go in policies.local.json.
+  const policyPath = join(ctrlplaneDir, "policies.json");
   if (!existsSync(policyPath)) {
-    const defaultPoliciesYaml = `# @ctrlplane Policy Configuration
-version: "1.0"
-enforce_test_integrity: true
-
-rules:
-  - id: "RULE-BLOCK-DESTRUCTIVE-SHELL"
-    action: "DENY"
-    message: "Destructive commands (rm -rf, git push --force) are blocked."
-
-  - id: "RULE-PROTECT-TESTS"
-    action: "REQUIRE_MANUAL_APPROVAL"
-    message: "Modifying existing test assertions requires developer approval."
-`;
-    writeFileSync(policyPath, defaultPoliciesYaml, "utf8");
+    writeFileSync(policyPath, JSON.stringify(DEFAULT_PROJECT_CONFIG, null, 2) + "\n", "utf8");
   }
 
   // 3. Inject hooks based on selected agent

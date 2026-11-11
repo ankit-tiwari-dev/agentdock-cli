@@ -51,7 +51,14 @@ export async function handleStartDaemon(projectPath = process.cwd(), timeoutMs =
 /** Foreground entry used by the detached child. Runs until a shutdown frame or signal arrives. */
 export async function handleRunDaemon(projectPath = process.cwd()): Promise<number> {
   const root = resolve(projectPath);
-  const daemon = new SupervisorDaemon({ projectPath: root });
+  const { buildProjectEngine } = await import("../../../policy-engine/src/index.ts");
+  let projectEngine;
+  try {
+    projectEngine = await buildProjectEngine(root);
+  } catch (err) {
+    console.error(`[ctrlplane daemon] policy config invalid, running built-in rules only: ${String(err)}`);
+  }
+  const daemon = new SupervisorDaemon({ projectPath: root, projectEngine });
   const endpoint = await daemon.start();
   console.log(`[ctrlplane daemon] pid=${process.pid} ipc=${endpoint.path ?? `${endpoint.host}:${endpoint.port}`} started=${new Date().toISOString()}`);
 

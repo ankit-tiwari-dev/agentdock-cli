@@ -47,8 +47,19 @@ export async function runHook(eventName: string | undefined, stdinText: string, 
 }
 
 async function evaluateLocally(payload: AgentHookPayload, projectRoot: string): Promise<HookVerdictResponse> {
-  const { PolicyEngine } = await import("../../../policy-engine/src/index.ts");
-  const result = new PolicyEngine().evaluate({
+  const { buildProjectEngine, PolicyEngine } = await import("../../../policy-engine/src/index.ts");
+  let engine: InstanceType<typeof PolicyEngine>;
+  let paused = false;
+  try {
+    const project = await buildProjectEngine(projectRoot);
+    engine = project.engine;
+    paused = project.isPaused();
+  } catch {
+    // A broken config must not switch supervision off: fall back to the built-in rules.
+    engine = new PolicyEngine();
+  }
+  const result = engine.evaluate({
+    paused,
     event: payload.hookEventName,
     toolName: payload.toolName,
     toolInput: payload.toolInput,

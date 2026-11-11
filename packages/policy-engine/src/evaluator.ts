@@ -12,7 +12,7 @@ import {
   type RuleContext,
   type RuleHit,
 } from "../../core/src/index.ts";
-import { DEFAULT_SAFETY_RULES } from "./default-rules.ts";
+import { BUILTIN_RULES } from "./catalog.ts";
 import { CircuitBreaker } from "./circuit-breaker.ts";
 import { matchesAnyGlob, toProjectPath } from "./glob.ts";
 import { splitShellCommands } from "./shell.ts";
@@ -68,7 +68,7 @@ export class PolicyEngine {
   private compiledPatterns = new Map<string, RegExp[]>();
 
   constructor(customRules?: PolicyRule[], options?: PolicyEngineOptions) {
-    this.rules = customRules ?? [...DEFAULT_SAFETY_RULES];
+    this.rules = customRules ?? [...BUILTIN_RULES];
     this.overrides = options?.overrides ?? {};
     this.circuitBreaker = options?.breaker ?? new CircuitBreaker();
   }

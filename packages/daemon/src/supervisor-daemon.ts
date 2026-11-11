@@ -14,7 +14,14 @@ import {
   type PolicyAction,
 } from "../../core/src/index.ts";
 import { StorageEngine } from "../../storage/src/index.ts";
-import { CircuitBreaker, PolicyEngine, type RuleOverride } from "../../policy-engine/src/index.ts";
+import {
+  buildProjectEngine,
+  configStamp,
+  CircuitBreaker,
+  PolicyEngine,
+  type ProjectEngine,
+  type RuleOverride,
+} from "../../policy-engine/src/index.ts";
 import { IPCServer, type IPCEndpoint } from "./ipc-server.ts";
 import { findProjectRoot } from "./lock.ts";
 
@@ -32,6 +39,8 @@ export interface DaemonConfig {
   onEvent?: (event: DaemonEventNotice) => void;
   /** Decides per call whether non-always-on rules are paused. */
   isPaused?: (sessionId: string) => boolean;
+  /** Project rules and config; reloaded when a config file changes. */
+  projectEngine?: ProjectEngine;
 }
 
 export interface DaemonEventNotice {
@@ -74,6 +83,8 @@ export class SupervisorDaemon {
   private lockFilePath: string;
   private dbPath: string;
   private shutdownRequested: (() => void) | null = null;
+  private projectEngine: ProjectEngine | null;
+  private reloading = false;
 
   constructor(config: DaemonConfig) {
     this.config = config;
@@ -82,11 +93,32 @@ export class SupervisorDaemon {
 
     this.dbPath = config.dbPath ?? join(this.projectRoot, ".ctrlplane", "audit.db");
     this.storage = new StorageEngine(this.dbPath);
-    this.policyEngine = new PolicyEngine(undefined, { overrides: config.overrides });
+    this.projectEngine = config.projectEngine ?? null;
+    this.policyEngine = this.projectEngine?.engine ?? new PolicyEngine(undefined, { overrides: config.overrides });
 
     this.lockFilePath = join(this.projectRoot, ".ctrlplane", "daemon.lock");
 
     this.ipcServer = new IPCServer((payload) => this.handleHookPayload(payload), config.ipcPathOrPort);
+  }
+
+  /** Picks up edited policies.json files without a restart; the old rules serve until the new ones load. */
+  private reloadIfConfigChanged(): void {
+    const current = this.projectEngine;
+    if (!current || this.reloading) return;
+    if (configStamp(this.projectRoot) === current.stamp) return;
+    this.reloading = true;
+    buildProjectEngine(this.projectRoot)
+      .then((next) => {
+        this.projectEngine = next;
+        this.policyEngine = next.engine;
+      })
+      .catch((err) => {
+        console.error(`[ctrlplane daemon] config reload failed, keeping previous rules: ${String(err)}`);
+        current.stamp = configStamp(this.projectRoot);
+      })
+      .finally(() => {
+        this.reloading = false;
+      });
   }
 
   public getStorage(): StorageEngine {
@@ -100,7 +132,7 @@ export class SupervisorDaemon {
   public getBreaker(sessionId: string): CircuitBreaker {
     let breaker = this.breakers.get(sessionId);
     if (!breaker) {
-      breaker = new CircuitBreaker();
+      breaker = this.projectEngine?.newBreaker() ?? new CircuitBreaker();
       this.breakers.set(sessionId, breaker);
     }
     return breaker;
@@ -215,6 +247,7 @@ export class SupervisorDaemon {
       return { decision: "ALLOW", exitCode: 0, stdoutMessage: DAEMON_VERSION, latencyMs: 0 };
     }
 
+    this.reloadIfConfigChanged();
     const sessionId = payload.sessionId ?? DEFAULT_SESSION;
     this.activeSessionId = sessionId;
     this.ensureSession(sessionId, payload);
@@ -242,7 +275,7 @@ export class SupervisorDaemon {
       projectRoot: (payload.cwd && findProjectRoot(payload.cwd)) || this.projectRoot,
       stopHookActive: payload.stopHookActive,
       permissionMode: payload.permissionMode,
-      paused: this.config.isPaused?.(sessionId) ?? false,
+      paused: this.config.isPaused?.(sessionId) ?? this.projectEngine?.isPaused() ?? false,
       breaker,
     });
 
