@@ -1,17 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
-import {
-  closeSync,
-  fstatSync,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  readFileSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, statSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -25,21 +15,18 @@ import {
   injectOpenCodePlugin,
   isCtrlplaneCommand,
 } from "../src/index.ts";
-
 function projectWithLock(lock: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), "ctrlplane-client-"));
   mkdirSync(join(dir, ".ctrlplane"), { recursive: true });
   writeFileSync(join(dir, ".ctrlplane", "daemon.lock"), JSON.stringify(lock));
   return dir;
 }
-
 const payload = (cwd: string) => ({
   hookEventName: "PreToolUse" as const,
   cwd,
   toolName: "Bash",
   toolInput: { command: "rm -rf /" },
 });
-
 test("regression: a garbage ipcTarget in the lock falls back instead of throwing", async () => {
   const dir = projectWithLock({ pid: process.pid, ipcTarget: "nonsense:not-a-port" });
   try {
@@ -53,7 +40,6 @@ test("regression: a garbage ipcTarget in the lock falls back instead of throwing
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
 test("regression: an unparseable daemon reply falls back to the local rules", async () => {
   const server = createServer((socket) => {
     socket.on("data", () => socket.end("this is not json\n"));
@@ -71,7 +57,6 @@ test("regression: an unparseable daemon reply falls back to the local rules", as
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
 test("regression: the OpenCode plugin blocks a tool call when the hook times out", async () => {
   const dir = mkdtempSync(join(tmpdir(), "ctrlplane-ocplugin-"));
   try {
@@ -90,7 +75,6 @@ test("regression: the OpenCode plugin blocks a tool call when the hook times out
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
 test("regression: init keeps a user's own hook whose command merely mentions 'ctrlplane hook'", () => {
   const dir = mkdtempSync(join(tmpdir(), "ctrlplane-userhook-"));
   try {
@@ -101,7 +85,6 @@ test("regression: init keeps a user's own hook whose command merely mentions 'ct
     const after = JSON.parse(readFileSync(join(dir, ".claude", "settings.local.json"), "utf8"));
     assert.deepEqual(after.hooks.PreToolUse[0], mine);
     assert.equal(after.hooks.PreToolUse.length, 2);
-
     for (const ours of [
       'node "C:/x/packages/cli/src/bin.ts" hook PreToolUse',
       "node /opt/agentdock/packages/cli/src/bin.ts hook Stop --agent codex",
@@ -121,7 +104,6 @@ test("regression: init keeps a user's own hook whose command merely mentions 'ct
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
 test("regression: Codex install keeps the entries of an existing hooks array", () => {
   const dir = mkdtempSync(join(tmpdir(), "ctrlplane-codexarr-"));
   try {
@@ -150,7 +132,6 @@ test("regression: Codex install keeps the entries of an existing hooks array", (
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
 test("regression: OpenCode install keeps a plugin given as a single string", () => {
   const dir = mkdtempSync(join(tmpdir(), "ctrlplane-ocstr-"));
   try {
@@ -163,7 +144,6 @@ test("regression: OpenCode install keeps a plugin given as a single string", () 
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
 test("regression: a UTF-8 BOM in a settings file does not break install", () => {
   const dir = mkdtempSync(join(tmpdir(), "ctrlplane-bom-"));
   try {
@@ -177,7 +157,6 @@ test("regression: a UTF-8 BOM in a settings file does not break install", () => 
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
 test("regression: CTRLPLANE_HOOK_COMMAND is ignored unless the explicit override flag is set", () => {
   const prev = { cmd: process.env.CTRLPLANE_HOOK_COMMAND, allow: process.env.CTRLPLANE_ALLOW_HOOK_COMMAND_OVERRIDE };
   try {
@@ -194,13 +173,11 @@ test("regression: CTRLPLANE_HOOK_COMMAND is ignored unless the explicit override
     else process.env.CTRLPLANE_ALLOW_HOOK_COMMAND_OVERRIDE = prev.allow;
   }
 });
-
 test("regression: recognising our hook command answers in linear time on `node` followed by many spaces", () => {
   const start = performance.now();
   isCtrlplaneCommand(`node${" ".repeat(100_000)}x`);
   // Runs on every hook entry during install and uninstall; 300 ms leaves room for a slow CI runner.
   assert.ok(performance.now() - start < 300);
-
   for (const ours of [
     'node "/home/me/agentdock/packages/cli/src/bin.ts" hook PreToolUse',
     "node   C:\\work\\agentdock\\packages\\cli\\src\\bin.ts hook --agent codex",
@@ -221,34 +198,33 @@ test("regression: recognising our hook command answers in linear time on `node` 
     assert.equal(isCtrlplaneCommand(theirs), false, theirs);
   }
 });
-
 // Reading the plugin file is now one operation instead of a check followed by a read, which closes a
-// check-then-use window. The window cannot be hit reliably in a test, so this only pins the behaviour.
-test("OpenCode install writes a missing plugin, replaces a stale one and leaves a current one untouched", () => {
+// check-then-use window. The window cannot be hit reliably in a test, so these only pin the behaviour.
+// Each test either inspects the file or writes it, never both, so the tests have no such window themselves.
+test("OpenCode install writes a missing plugin and replaces a stale one", () => {
   const dir = mkdtempSync(join(tmpdir(), "ctrlplane-ocplugin-"));
   try {
     const first = injectOpenCodePlugin(dir, "ctrlplane hook");
     const current = readFileSync(first.pluginPath, "utf8");
     assert.equal(current, buildOpenCodePlugin("ctrlplane hook"));
-
-    const old = new Date(2000, 0, 1);
-    utimesSync(first.pluginPath, old, old);
-    injectOpenCodePlugin(dir, "ctrlplane hook");
-    // Read the timestamp through an open handle, so the test itself has no check-then-use on the path.
-    const handle = openSync(first.pluginPath, "r");
-    try {
-      assert.equal(fstatSync(handle).mtimeMs, old.getTime());
-    } finally {
-      closeSync(handle);
-    }
-
     writeFileSync(first.pluginPath, "stale");
     injectOpenCodePlugin(dir, "ctrlplane hook");
     assert.equal(readFileSync(first.pluginPath, "utf8"), current);
-
     rmSync(first.pluginPath);
     mkdirSync(first.pluginPath);
     assert.throws(() => injectOpenCodePlugin(dir, "ctrlplane hook"), { code: "EISDIR" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("OpenCode install leaves a current plugin untouched", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ctrlplane-ocplugin-"));
+  try {
+    const first = injectOpenCodePlugin(dir, "ctrlplane hook");
+    const old = new Date(2000, 0, 1);
+    utimesSync(first.pluginPath, old, old);
+    injectOpenCodePlugin(dir, "ctrlplane hook");
+    assert.equal(statSync(first.pluginPath).mtimeMs, old.getTime());
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
