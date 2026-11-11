@@ -19,7 +19,7 @@ test("FULL E2E INTEGRATION: Init -> Spec -> Supervise -> Block Tamper -> Verify 
     const initRes = handleInit({ projectPath: tmpProject, agent: "claude" });
     assert.equal(initRes.success, true);
     assert.ok(existsSync(join(tmpProject, ".ctrlplane", "spec.md")));
-    assert.ok(existsSync(join(tmpProject, ".claude", "settings.json")));
+    assert.ok(existsSync(join(tmpProject, ".claude", "settings.local.json")));
 
     // 2. Manage and approve specification
     const specOutput = handleSpecCommand("approve", ["lead-architect"], tmpProject);

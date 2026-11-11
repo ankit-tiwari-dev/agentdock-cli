@@ -1,45 +1,92 @@
-import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { performance } from "node:perf_hooks";
-import type {
-  AgentHookPayload,
-  HookVerdictResponse,
-  DaemonStatus,
+import {
+  detectToolFailure,
+  type AgentHookPayload,
+  type AgentType,
+  type DaemonStatus,
+  type EventType,
+  type HookEventName,
+  type HookVerdictResponse,
+  type PolicyAction,
 } from "../../core/src/index.ts";
 import { StorageEngine } from "../../storage/src/index.ts";
-import { PolicyEngine } from "../../policy-engine/src/index.ts";
+import { CircuitBreaker, PolicyEngine, type RuleOverride } from "../../policy-engine/src/index.ts";
 import { IPCServer, type IPCEndpoint } from "./ipc-server.ts";
+import { findProjectRoot } from "./lock.ts";
+
+export { findProjectRoot, getRunningDaemonLock, isProcessAlive, type DaemonLock } from "./lock.ts";
+
+export const DAEMON_VERSION = "0.2.0";
 
 export interface DaemonConfig {
   projectPath: string;
   dbPath?: string;
   ipcPathOrPort?: string | number;
+  /** Rule overrides from policies config (enabled / mode / params). */
+  overrides?: Record<string, RuleOverride>;
+  /** Called after every handled hook, e.g. to stream to the dashboard. */
+  onEvent?: (event: DaemonEventNotice) => void;
+  /** Decides per call whether non-always-on rules are paused. */
+  isPaused?: (sessionId: string) => boolean;
 }
+
+export interface DaemonEventNotice {
+  sessionId: string;
+  sequenceNum: number;
+  eventType: EventType;
+  toolName?: string;
+  decision: PolicyAction;
+  reason: string;
+  matchedRuleId?: string;
+  observedOnly: boolean;
+  createdAt: number;
+}
+
+const EVENT_TYPE: Record<HookEventName, EventType> = {
+  PreToolUse: "pre_tool",
+  PostToolUse: "post_tool",
+  UserPromptSubmit: "user_prompt",
+  Stop: "stop",
+  SubagentStop: "subagent_stop",
+  SessionStart: "session_start",
+  SessionEnd: "session_end",
+  PreCompact: "pre_compact",
+  Notification: "notification",
+};
+
+const DEFAULT_SESSION = "sess_default";
 
 export class SupervisorDaemon {
   private config: DaemonConfig;
+  private projectRoot: string;
   private storage: StorageEngine;
   private policyEngine: PolicyEngine;
   private ipcServer: IPCServer;
   private startTime: number;
   private activeSessionId: string | null = null;
-  private sequenceCounter: number = 0;
+  private sequenceBySession = new Map<string, number>();
+  private breakers = new Map<string, CircuitBreaker>();
+  private knownSessions = new Set<string>();
   private lockFilePath: string;
+  private dbPath: string;
+  private shutdownRequested: (() => void) | null = null;
 
   constructor(config: DaemonConfig) {
     this.config = config;
+    this.projectRoot = resolve(config.projectPath);
     this.startTime = Date.now();
 
-    const dbPath = config.dbPath ?? join(config.projectPath, ".ctrlplane", "audit.db");
-    this.storage = new StorageEngine(dbPath);
-    this.policyEngine = new PolicyEngine();
+    this.dbPath = config.dbPath ?? join(this.projectRoot, ".ctrlplane", "audit.db");
+    this.storage = new StorageEngine(this.dbPath);
+    this.policyEngine = new PolicyEngine(undefined, { overrides: config.overrides });
 
-    this.lockFilePath = join(config.projectPath, ".ctrlplane", "daemon.lock");
+    this.lockFilePath = join(this.projectRoot, ".ctrlplane", "daemon.lock");
 
-    this.ipcServer = new IPCServer(
-      (payload) => this.handleHookPayload(payload),
-      config.ipcPathOrPort
-    );
+    this.ipcServer = new IPCServer((payload) => this.handleHookPayload(payload), config.ipcPathOrPort);
   }
 
   public getStorage(): StorageEngine {
@@ -50,22 +97,36 @@ export class SupervisorDaemon {
     return this.policyEngine;
   }
 
+  public getBreaker(sessionId: string): CircuitBreaker {
+    let breaker = this.breakers.get(sessionId);
+    if (!breaker) {
+      breaker = new CircuitBreaker();
+      this.breakers.set(sessionId, breaker);
+    }
+    return breaker;
+  }
+
+  /** Resolves when a shutdown control frame arrives over IPC. */
+  public waitForShutdownRequest(): Promise<void> {
+    return new Promise((res) => {
+      this.shutdownRequested = res;
+    });
+  }
+
   public async start(): Promise<IPCEndpoint> {
     const endpoint = await this.ipcServer.start();
 
-    // Ensure .ctrlplane dir exists
     const ctrlplaneDir = dirname(this.lockFilePath);
     if (!existsSync(ctrlplaneDir)) {
       mkdirSync(ctrlplaneDir, { recursive: true });
     }
 
     const ipcTarget = endpoint.path || `${endpoint.host}:${endpoint.port}`;
-
-    // Write lock file
     const lockData = {
       pid: process.pid,
       ipcTarget,
       startedAt: this.startTime,
+      version: DAEMON_VERSION,
     };
     writeFileSync(this.lockFilePath, JSON.stringify(lockData, null, 2));
 
@@ -78,9 +139,10 @@ export class SupervisorDaemon {
 
     if (existsSync(this.lockFilePath)) {
       try {
-        unlinkSync(this.lockFilePath);
+        const lock = JSON.parse(readFileSync(this.lockFilePath, "utf8"));
+        if (lock.pid === process.pid) unlinkSync(this.lockFilePath);
       } catch {
-        // Ignore lock removal failure on exit
+        // A lock we cannot read is not ours to remove.
       }
     }
   }
@@ -88,77 +150,164 @@ export class SupervisorDaemon {
   public getStatus(): DaemonStatus {
     const endpoint = this.ipcServer.getEndpoint();
     const ipcTarget = endpoint.path || `${endpoint.host}:${endpoint.port}`;
+    let databaseSizeBytes = 0;
+    try {
+      if (this.dbPath !== ":memory:") databaseSizeBytes = statSync(this.dbPath).size;
+    } catch {
+      databaseSizeBytes = 0;
+    }
     return {
       pid: process.pid,
       uptimeSeconds: Math.floor((Date.now() - this.startTime) / 1000),
       ipcPath: ipcTarget,
       activeSessionId: this.activeSessionId,
-      databaseSizeBytes: 0,
-      connectedAgentsCount: 1,
-      version: "0.1.0",
+      databaseSizeBytes,
+      connectedAgentsCount: this.knownSessions.size,
+      version: DAEMON_VERSION,
     };
   }
 
-  private handleHookPayload(payload: AgentHookPayload): HookVerdictResponse {
+  private ensureSession(sessionId: string, payload: AgentHookPayload): void {
+    if (this.knownSessions.has(sessionId)) return;
+    this.knownSessions.add(sessionId);
+    let created = false;
+    try {
+      created = this.storage.ensureSession({
+        id: sessionId,
+        agentType: (payload.agent ?? "custom") as AgentType,
+        projectPath: this.projectRoot,
+        gitBranch: "unknown",
+        baseCommitSha: "0000000000000000000000000000000000000000",
+        status: "active",
+        startedAt: Date.now(),
+        metadata: payload.transcriptPath ? { transcriptPath: payload.transcriptPath } : undefined,
+      });
+      this.sequenceBySession.set(sessionId, this.storage.lastSequenceNum(sessionId));
+    } catch {
+      // Storage problems must never block the agent loop.
+    }
+    // Git lookups take tens of milliseconds; they run after the verdict is sent.
+    if (created) {
+      readGitHead(this.projectRoot).then((git) => {
+        try {
+          this.storage.updateSessionGit(sessionId, git.branch, git.sha);
+        } catch {
+          // Store may already be closed.
+        }
+      });
+    }
+  }
+
+  private nextSequence(sessionId: string): number {
+    const n = (this.sequenceBySession.get(sessionId) ?? 0) + 1;
+    this.sequenceBySession.set(sessionId, n);
+    return n;
+  }
+
+  public handleHookPayload(payload: AgentHookPayload): HookVerdictResponse {
     const startTime = performance.now();
 
-    if (payload.sessionId) {
-      this.activeSessionId = payload.sessionId;
+    if (payload.control === "shutdown") {
+      setImmediate(() => this.shutdownRequested?.());
+      return { decision: "ALLOW", exitCode: 0, stdoutMessage: "shutting down", latencyMs: 0 };
+    }
+    if (payload.control === "ping") {
+      return { decision: "ALLOW", exitCode: 0, stdoutMessage: DAEMON_VERSION, latencyMs: 0 };
     }
 
-    // 1. Evaluate policy
+    const sessionId = payload.sessionId ?? DEFAULT_SESSION;
+    this.activeSessionId = sessionId;
+    this.ensureSession(sessionId, payload);
+    const breaker = this.getBreaker(sessionId);
+
+    if (payload.hookEventName === "UserPromptSubmit") {
+      breaker.resetForNewPrompt();
+    } else if (payload.hookEventName === "PostToolUse") {
+      const outcome = detectToolFailure(payload.toolName, payload.toolResponse);
+      breaker.recordExecutionResult(!outcome.failed, outcome.signature);
+    } else if (payload.hookEventName === "SessionEnd") {
+      try {
+        this.storage.updateSessionStatus(sessionId, "completed");
+      } catch {
+        // Status is informational.
+      }
+    }
+
     const policyResult = this.policyEngine.evaluate({
-      event: payload.hookEventName === "PreToolUse" ? "PreToolUse" : "PostToolUse",
+      event: payload.hookEventName,
       toolName: payload.toolName,
       toolInput: payload.toolInput,
+      toolResponse: payload.toolResponse,
+      prompt: payload.prompt,
+      projectRoot: (payload.cwd && findProjectRoot(payload.cwd)) || this.projectRoot,
+      stopHookActive: payload.stopHookActive,
+      permissionMode: payload.permissionMode,
+      paused: this.config.isPaused?.(sessionId) ?? false,
+      breaker,
     });
 
-    const isDenied = policyResult.decision === "DENY" || policyResult.decision === "REQUIRE_MANUAL_APPROVAL";
-    const exitCode: 0 | 2 = isDenied ? 2 : 0;
+    const exitCode: 0 | 2 = policyResult.decision === "DENY" ? 2 : 0;
+    const observedOnly = policyResult.decision === "ALLOW" && !!policyResult.observed?.length;
+    const reason = observedOnly
+      ? `Observe mode: would ${policyResult.observed![0].wouldDecide} — ${policyResult.observed![0].reason}`
+      : policyResult.reason;
 
-    // 2. Asynchronously ingest event into storage
-    this.sequenceCounter++;
+    const eventType = EVENT_TYPE[payload.hookEventName] ?? "notification";
+    const sequenceNum = this.nextSequence(sessionId);
+    const createdAt = Date.now();
     try {
       this.storage.insertEvent({
-        id: `evt_${this.sequenceCounter}_${Date.now()}`,
-        sessionId: this.activeSessionId ?? "sess_default",
-        sequenceNum: this.sequenceCounter,
-        eventType: payload.hookEventName === "PreToolUse" ? "pre_tool" : "post_tool",
+        id: `evt_${sessionId}_${sequenceNum}_${createdAt}`,
+        sessionId,
+        sequenceNum,
+        eventType,
         toolName: payload.toolName,
-        toolInput: payload.toolInput,
+        toolInput: payload.toolInput ?? (payload.prompt !== undefined ? { prompt: payload.prompt } : undefined),
         toolOutput: payload.toolResponse,
         policyVerdict: policyResult.decision,
-        policyReason: policyResult.reason,
+        policyReason: reason,
         executionDurationMs: Math.round(performance.now() - startTime),
-        createdAt: Date.now(),
+        createdAt,
       });
     } catch {
-      // Storage error must not block agent loop
+      // Storage problems must never block the agent loop.
     }
 
-    const elapsed = performance.now() - startTime;
+    try {
+      this.config.onEvent?.({
+        sessionId,
+        sequenceNum,
+        eventType,
+        toolName: payload.toolName,
+        decision: policyResult.decision,
+        reason,
+        matchedRuleId: policyResult.matchedRuleId ?? policyResult.observed?.[0]?.ruleId,
+        observedOnly,
+        createdAt,
+      });
+    } catch {
+      // Listeners are best effort.
+    }
 
     return {
       decision: policyResult.decision,
       exitCode,
-      stderrMessage: isDenied ? policyResult.reason : undefined,
+      stderrMessage: policyResult.decision === "ALLOW" ? undefined : policyResult.reason,
       steeringInstruction: policyResult.steeringInstruction,
-      latencyMs: elapsed,
+      matchedRuleId: policyResult.matchedRuleId,
+      observedOnly,
+      latencyMs: performance.now() - startTime,
     };
   }
 }
 
-/**
- * Reads existing daemon lock file to find running daemon
- */
-export function getRunningDaemonLock(projectPath: string): { pid: number; ipcTarget: string } | null {
-  const lockPath = join(projectPath, ".ctrlplane", "daemon.lock");
-  if (!existsSync(lockPath)) return null;
+const execFileAsync = promisify(execFile);
 
+async function readGitHead(cwd: string): Promise<{ branch: string; sha: string }> {
+  const run = async (args: string[]) => (await execFileAsync("git", args, { cwd, encoding: "utf8", timeout: 2000 })).stdout.trim();
   try {
-    const content = readFileSync(lockPath, "utf8");
-    return JSON.parse(content);
+    return { branch: await run(["rev-parse", "--abbrev-ref", "HEAD"]), sha: await run(["rev-parse", "HEAD"]) };
   } catch {
-    return null;
+    return { branch: "unknown", sha: "0000000000000000000000000000000000000000" };
   }
 }

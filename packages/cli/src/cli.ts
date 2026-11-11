@@ -1,5 +1,5 @@
 import { handleInit } from "./commands/init.ts";
-import { handleStartDaemon, handleStopDaemon, handleStatus } from "./commands/daemon-cmd.ts";
+import { handleStartDaemon, handleStopDaemon, handleStatus, handleRunDaemon } from "./commands/daemon-cmd.ts";
 import { handleSpecCommand } from "./commands/spec-cmd.ts";
 import { handleVerifyCommand } from "./commands/verify-cmd.ts";
 import { handleExplainCommand } from "./commands/explain-cmd.ts";
@@ -34,8 +34,13 @@ export async function runCli(args: string[]): Promise<number> {
     }
 
     case "status": {
-      console.log(handleStatus());
+      console.log(await handleStatus());
       return 0;
+    }
+
+    case "daemon-run": {
+      const projectFlag = subArgs.indexOf("--project");
+      return handleRunDaemon(projectFlag !== -1 ? subArgs[projectFlag + 1] : process.cwd());
     }
 
     case "spec": {
@@ -90,7 +95,7 @@ export async function runCli(args: string[]): Promise<number> {
     }
 
     case "hook": {
-      const exitCode = await handleHookCommand(subArgs[0] || "PreToolUse");
+      const exitCode = await handleHookCommand(subArgs[0] || "PreToolUse", subArgs.slice(1));
       return exitCode;
     }
 

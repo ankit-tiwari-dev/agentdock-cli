@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { unlinkSync, existsSync } from "node:fs";
 import type { AgentHookPayload, HookVerdictResponse } from "../../core/src/index.ts";
 
+/** Tool payloads can be large (whole file writes); anything past this is not a hook frame. */
+const MAX_FRAME_BYTES = 16 * 1024 * 1024;
+
 export type HookHandler = (payload: AgentHookPayload) => Promise<HookVerdictResponse> | HookVerdictResponse;
 
 export interface IPCEndpoint {
@@ -46,11 +49,16 @@ export class IPCServer {
 
     socket.on("data", async (chunk) => {
       buffer += chunk.toString("utf8");
+      if (buffer.length > MAX_FRAME_BYTES) {
+        socket.destroy();
+        return;
+      }
 
-      const delimiterIndex = buffer.indexOf("\n");
-      if (delimiterIndex !== -1) {
+      let delimiterIndex: number;
+      while ((delimiterIndex = buffer.indexOf("\n")) !== -1) {
         const rawMessage = buffer.slice(0, delimiterIndex);
         buffer = buffer.slice(delimiterIndex + 1);
+        if (!rawMessage.trim()) continue;
 
         try {
           const payload: AgentHookPayload = JSON.parse(rawMessage);

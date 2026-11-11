@@ -1,82 +1,74 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  defaultHookCommand,
+  mergeHookGroups,
+  readJsonObject,
+  stripHookGroups,
+  writeJsonIfChanged,
+  type HookEventSpec,
+} from "./hook-command.ts";
 
-export interface ClaudeHookEntry {
-  matcher?: string;
-  command: string;
-}
+export const CLAUDE_HOOK_EVENTS: HookEventSpec[] = [
+  { event: "PreToolUse", matcher: "*", timeoutSeconds: 15 },
+  { event: "PostToolUse", matcher: "*", timeoutSeconds: 15 },
+  { event: "UserPromptSubmit", timeoutSeconds: 15 },
+  { event: "Stop", timeoutSeconds: 120 },
+  { event: "SubagentStop", timeoutSeconds: 120 },
+  { event: "SessionStart", timeoutSeconds: 30 },
+  { event: "SessionEnd", timeoutSeconds: 15 },
+  { event: "PreCompact", timeoutSeconds: 90 },
+];
 
-export interface ClaudeSettings {
-  hooks?: {
-    PreToolUse?: ClaudeHookEntry[];
-    PostToolUse?: ClaudeHookEntry[];
-    UserPromptSubmit?: ClaudeHookEntry[];
-    Stop?: ClaudeHookEntry[];
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
-
-export function injectClaudeHooks(projectPath: string, cliCommand = "npx ctrlplane hook"): {
+/**
+ * Installs hooks into `.claude/settings.local.json`: the command holds a machine-specific path,
+ * and the local file is the one Claude Code keeps out of version control. Earlier versions wrote
+ * a wrong-shaped entry into `settings.json`; those are removed from both files.
+ */
+export function injectClaudeHooks(projectPath: string, cliCommand = defaultHookCommand()): {
   success: boolean;
   settingsPath: string;
   backupPath?: string;
   addedHooksCount: number;
 } {
   const claudeDir = join(projectPath, ".claude");
-  if (!existsSync(claudeDir)) {
-    mkdirSync(claudeDir, { recursive: true });
-  }
+  const settingsPath = join(claudeDir, "settings.local.json");
 
-  const settingsPath = join(claudeDir, "settings.json");
-  let settings: ClaudeSettings = {};
-  let backupPath: string | undefined;
-
-  if (existsSync(settingsPath)) {
-    try {
-      const raw = readFileSync(settingsPath, "utf8");
-      settings = JSON.parse(raw);
-
-      // Create backup
-      backupPath = join(claudeDir, `settings.backup.${Date.now()}.json`);
-      writeFileSync(backupPath, raw);
-    } catch {
-      settings = {};
+  const sharedPath = join(claudeDir, "settings.json");
+  const shared = readJsonObject(sharedPath);
+  if (shared.raw !== undefined && shared.data.hooks && typeof shared.data.hooks === "object") {
+    if (stripHookGroups(shared.data.hooks as Record<string, unknown>) > 0) {
+      if (Object.keys(shared.data.hooks as object).length === 0) delete shared.data.hooks;
+      writeJsonIfChanged(sharedPath, shared.data, shared.raw);
     }
   }
 
-  if (!settings.hooks) {
-    settings.hooks = {};
-  }
+  const local = readJsonObject(settingsPath);
+  const settings = local.data;
+  if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
 
-  let added = 0;
-  const hookEvents = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"] as const;
-
-  for (const event of hookEvents) {
-    if (!settings.hooks[event]) {
-      settings.hooks[event] = [];
-    }
-
-    const eventHooks = settings.hooks[event]!;
-    const hookCmd = `${cliCommand} ${event}`;
-
-    const alreadyExists = eventHooks.some((h) => h.command.includes("ctrlplane hook"));
-    if (!alreadyExists) {
-      eventHooks.push({
-        matcher: "*",
-        command: hookCmd,
-      });
-      added++;
-    }
-  }
-
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  const added = mergeHookGroups(settings.hooks as Record<string, unknown>, CLAUDE_HOOK_EVENTS, (event) => `${cliCommand} ${event}`);
+  const written = writeJsonIfChanged(settingsPath, settings, local.raw);
 
   return {
     success: true,
     settingsPath,
-    backupPath,
+    backupPath: written.backupPath,
     addedHooksCount: added,
   };
 }
 
+export function removeClaudeHooks(projectPath: string): number {
+  let removed = 0;
+  for (const name of ["settings.local.json", "settings.json"]) {
+    const path = join(projectPath, ".claude", name);
+    const file = readJsonObject(path);
+    if (file.raw === undefined || !file.data.hooks || typeof file.data.hooks !== "object") continue;
+    const n = stripHookGroups(file.data.hooks as Record<string, unknown>);
+    if (n > 0) {
+      if (Object.keys(file.data.hooks as object).length === 0) delete file.data.hooks;
+      writeJsonIfChanged(path, file.data, file.raw);
+      removed += n;
+    }
+  }
+  return removed;
+}

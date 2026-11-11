@@ -8,6 +8,8 @@ export type EventType =
   | "session_start"
   | "session_end"
   | "notification"
+  | "pre_compact"
+  | "subagent_stop"
   | "circuit_breaker_triggered";
 
 export interface AuditEvent {

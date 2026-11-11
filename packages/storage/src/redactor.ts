@@ -7,25 +7,48 @@ export interface RedactionResult {
 const REDACTION_PATTERNS: Array<{
   category: string;
   regex: RegExp;
-  replacement: (match: string) => string;
+  replacement: (match: string, ...groups: string[]) => string;
 }> = [
-  // Anthropic API Keys (sk-ant-...)
+  // No replacement keeps any character of the secret: even a short fragment narrows a brute force.
   {
     category: "ANTHROPIC_KEY",
     regex: /sk-ant-[a-zA-Z0-9_\-]{20,}/g,
-    replacement: (m) => `[REDACTED_SECRET:ANTHROPIC_KEY_${m.slice(0, 10)}]`,
+    replacement: () => `[REDACTED_SECRET:ANTHROPIC_KEY]`,
   },
-  // OpenAI API Keys (sk-proj-... or sk-...)
   {
     category: "OPENAI_KEY",
     regex: /sk-(?:proj-)?[a-zA-Z0-9_\-]{30,}/g,
-    replacement: (m) => `[REDACTED_SECRET:OPENAI_KEY_${m.slice(0, 8)}]`,
+    replacement: () => `[REDACTED_SECRET:OPENAI_KEY]`,
   },
-  // GitHub Tokens (ghp_, gho_, ghu_, ghs_, ghr_)
   {
     category: "GITHUB_TOKEN",
-    regex: /gh[pousr]_[a-zA-Z0-9]{36,}/g,
-    replacement: (m) => `[REDACTED_SECRET:GITHUB_TOKEN_${m.slice(0, 7)}]`,
+    regex: /(?:gh[pousr]_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{40,})/g,
+    replacement: () => `[REDACTED_SECRET:GITHUB_TOKEN]`,
+  },
+  {
+    category: "SLACK_TOKEN",
+    regex: /xox[abposr]-[a-zA-Z0-9-]{10,}/g,
+    replacement: () => `[REDACTED_SECRET:SLACK_TOKEN]`,
+  },
+  {
+    category: "GOOGLE_API_KEY",
+    regex: /AIza[0-9A-Za-z_\-]{35}/g,
+    replacement: () => `[REDACTED_SECRET:GOOGLE_API_KEY]`,
+  },
+  {
+    category: "JWT",
+    regex: /eyJ[a-zA-Z0-9_\-]{8,}\.eyJ[a-zA-Z0-9_\-]{8,}\.[a-zA-Z0-9_\-]{8,}/g,
+    replacement: () => `[REDACTED_SECRET:JWT]`,
+  },
+  {
+    category: "BEARER_TOKEN",
+    regex: /(Bearer\s+)[a-zA-Z0-9_\-.=+/]{16,}/g,
+    replacement: (_m, prefix) => `${prefix}[REDACTED_SECRET:BEARER_TOKEN]`,
+  },
+  {
+    category: "CONNECTION_STRING",
+    regex: /([a-z][a-z0-9+.\-]*:\/\/[^\s:/@]+:)([^\s@/]{3,})(@)/gi,
+    replacement: (_m, prefix, _password, at) => `${prefix}[REDACTED_SECRET:PASSWORD]${at}`,
   },
   // AWS Access Key ID
   {
@@ -44,8 +67,7 @@ const REDACTION_PATTERNS: Array<{
     category: "ENV_SECRET",
     regex:
       /([A-Z0-9_]*(?:SECRET|KEY|PASSWORD|TOKEN|AUTH|PASSWD)[A-Z0-9_]*\s*=\s*['"]?)([a-zA-Z0-9\-_./+=]{16,})(['"]?)/gi,
-    replacement: (_m, prefix, secret, suffix) =>
-      `${prefix}[REDACTED_SECRET:ENV_${secret.slice(0, 4)}]${suffix}`,
+    replacement: (_m, prefix, _secret, suffix) => `${prefix}[REDACTED_SECRET:ENV]${suffix}`,
   },
 ];
 

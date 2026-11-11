@@ -41,13 +41,22 @@ export function isCtrlplaneFile(filePath: string): boolean {
 
 export function isSensitiveFile(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/").toLowerCase();
+  const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+  if (/^\.env\.(example|sample|template|dist|defaults)$/.test(base)) return false;
   return (
-    normalized.endsWith(".env") ||
-    normalized.includes(".env.") ||
-    normalized.endsWith(".pem") ||
-    normalized.endsWith(".key") ||
+    base === ".env" ||
+    base.startsWith(".env.") ||
+    base.endsWith(".pem") ||
+    base.endsWith(".key") ||
+    base.endsWith(".p12") ||
+    base.endsWith(".pfx") ||
+    /^id_(rsa|dsa|ecdsa|ed25519)/.test(base) ||
     normalized.includes("/.ssh/") ||
-    normalized.endsWith("id_rsa")
+    normalized.startsWith(".ssh/") ||
+    normalized.endsWith("/.aws/credentials") ||
+    base === ".npmrc" ||
+    base === ".netrc" ||
+    base === ".pgpass"
   );
 }
 

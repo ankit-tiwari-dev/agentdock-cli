@@ -1,37 +1,83 @@
-import { dispatchHook } from "../../../agent-adapters/src/index.ts";
-import type { AgentHookPayload } from "../../../core/src/index.ts";
+import { DAEMON_UNAVAILABLE, dispatchHook } from "../../../agent-adapters/src/hook-client.ts";
+import { formatHookOutput, type HookProcessOutput } from "../../../agent-adapters/src/hook-output.ts";
+import { normalizeHookPayload, type AgentHookPayload, type HookVerdictResponse } from "../../../core/src/index.ts";
+import { findProjectRoot } from "../../../daemon/src/lock.ts";
 
-export async function handleHookCommand(eventName: string): Promise<number> {
-  const stdinPayload = await readAllStdin();
-  let parsedPayload: Record<string, unknown> = {};
+export interface HookRunOptions {
+  agent?: string;
+  cwd?: string;
+  timeoutMs?: number;
+  /** Extra context to inject (SessionStart context pack). Resolved lazily so other events stay fast. */
+  contextProvider?: (payload: AgentHookPayload, projectRoot: string) => Promise<string | undefined>;
+}
 
-  if (stdinPayload.trim()) {
+/** Pure core of the hook shim: stdin text in, process output out. */
+export async function runHook(eventName: string | undefined, stdinText: string, options: HookRunOptions = {}): Promise<HookProcessOutput> {
+  let raw: Record<string, unknown> = {};
+  if (stdinText.trim()) {
     try {
-      parsedPayload = JSON.parse(stdinPayload);
+      const parsed = JSON.parse(stdinText);
+      if (parsed && typeof parsed === "object") raw = parsed as Record<string, unknown>;
     } catch {
-      // Fallback
+      // Unparseable input still goes through with what we know (event name, cwd).
     }
   }
 
-  const payload: AgentHookPayload = {
-    hookEventName: (eventName as AgentHookPayload["hookEventName"]) || "PreToolUse",
-    cwd: String(parsedPayload.cwd || process.cwd()),
-    sessionId: parsedPayload.sessionId ? String(parsedPayload.sessionId) : undefined,
-    toolName: parsedPayload.toolName ? String(parsedPayload.toolName) : undefined,
-    toolInput: (parsedPayload.toolInput as Record<string, unknown>) || undefined,
-    toolResponse: (parsedPayload.toolResponse as Record<string, unknown>) || undefined,
-    prompt: parsedPayload.prompt ? String(parsedPayload.prompt) : undefined,
-  };
+  const fallbackCwd = options.cwd ?? process.cwd();
+  const payload = normalizeHookPayload(eventName, raw, fallbackCwd, options.agent);
+  const projectRoot = findProjectRoot(payload.cwd) ?? findProjectRoot(fallbackCwd) ?? payload.cwd;
 
-  const response = await dispatchHook(payload);
+  let verdict = await dispatchHook(payload, { projectPath: projectRoot, timeoutMs: options.timeoutMs });
 
-  if (response.exitCode === 2 && response.stderrMessage) {
-    process.stderr.write(`${response.stderrMessage}\n`);
-  } else if (response.stdoutMessage) {
-    process.stdout.write(`${response.stdoutMessage}\n`);
+  // No daemon: still enforce the rules in-process rather than letting everything through.
+  if (verdict.decision === "ALLOW" && verdict.matchedRuleId === DAEMON_UNAVAILABLE) {
+    verdict = await evaluateLocally(payload, projectRoot);
   }
 
-  return response.exitCode;
+  let extraContext: string | undefined;
+  if (options.contextProvider && (payload.hookEventName === "SessionStart" || payload.hookEventName === "UserPromptSubmit")) {
+    try {
+      extraContext = await options.contextProvider(payload, projectRoot);
+    } catch {
+      extraContext = undefined;
+    }
+  }
+
+  return formatHookOutput(payload, verdict, extraContext);
+}
+
+async function evaluateLocally(payload: AgentHookPayload, projectRoot: string): Promise<HookVerdictResponse> {
+  const { PolicyEngine } = await import("../../../policy-engine/src/index.ts");
+  const result = new PolicyEngine().evaluate({
+    event: payload.hookEventName,
+    toolName: payload.toolName,
+    toolInput: payload.toolInput,
+    toolResponse: payload.toolResponse,
+    prompt: payload.prompt,
+    projectRoot,
+    stopHookActive: payload.stopHookActive,
+    permissionMode: payload.permissionMode,
+  });
+  return {
+    decision: result.decision,
+    exitCode: result.decision === "DENY" ? 2 : 0,
+    stderrMessage: result.decision === "ALLOW" ? undefined : result.reason,
+    steeringInstruction: result.steeringInstruction,
+    matchedRuleId: result.matchedRuleId,
+    latencyMs: result.latencyMs,
+  };
+}
+
+export async function handleHookCommand(eventName: string, args: string[] = []): Promise<number> {
+  const agentFlag = args.indexOf("--agent");
+  const agent = agentFlag !== -1 ? args[agentFlag + 1] : undefined;
+  const stdinPayload = await readAllStdin();
+
+  const out = await runHook(eventName, stdinPayload, { agent });
+
+  if (out.stdout) process.stdout.write(`${out.stdout}\n`);
+  if (out.stderr) process.stderr.write(`${out.stderr}\n`);
+  return out.exitCode;
 }
 
 function readAllStdin(): Promise<string> {
@@ -54,4 +100,3 @@ function readAllStdin(): Promise<string> {
     });
   });
 }
-

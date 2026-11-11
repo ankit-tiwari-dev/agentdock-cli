@@ -1,64 +1,51 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  defaultHookCommand,
+  mergeHookGroups,
+  readJsonObject,
+  stripHookGroups,
+  writeJsonIfChanged,
+  type HookEventSpec,
+} from "./hook-command.ts";
 
-export interface CodexHookEntry {
-  event: string;
-  command: string;
-}
+export const CODEX_HOOK_EVENTS: HookEventSpec[] = [
+  { event: "PreToolUse", matcher: "*", timeoutSeconds: 15 },
+  { event: "PostToolUse", matcher: "*", timeoutSeconds: 15 },
+  { event: "UserPromptSubmit", timeoutSeconds: 15 },
+  { event: "Stop", timeoutSeconds: 120 },
+  { event: "SessionStart", timeoutSeconds: 30 },
+];
 
-export function injectCodexHooks(projectPath: string, cliCommand = "npx ctrlplane hook"): {
+/**
+ * Installs hooks into `.codex/hooks.json` using the same `{ Event: [{ matcher, hooks: [...] }] }`
+ * shape as Claude Code. Codex only runs a hook after the developer trusts it in the interactive
+ * "Review hooks" prompt, so `ctrlplane doctor` reminds about that step.
+ */
+export function injectCodexHooks(projectPath: string, cliCommand = defaultHookCommand()): {
   success: boolean;
   hooksPath: string;
   backupPath?: string;
   addedHooksCount: number;
 } {
-  const codexDir = join(projectPath, ".codex");
-  if (!existsSync(codexDir)) {
-    mkdirSync(codexDir, { recursive: true });
-  }
+  const hooksPath = join(projectPath, ".codex", "hooks.json");
+  const file = readJsonObject(hooksPath);
+  const config = file.data;
 
-  const hooksPath = join(codexDir, "hooks.json");
-  let hooksConfig: { hooks?: CodexHookEntry[] } = { hooks: [] };
-  let backupPath: string | undefined;
+  // Earlier versions wrote a flat array; Codex does not read that shape.
+  if (Array.isArray(config.hooks)) config.hooks = {};
+  if (!config.hooks || typeof config.hooks !== "object") config.hooks = {};
 
-  if (existsSync(hooksPath)) {
-    try {
-      const raw = readFileSync(hooksPath, "utf8");
-      hooksConfig = JSON.parse(raw);
-      backupPath = join(codexDir, `hooks.backup.${Date.now()}.json`);
-      writeFileSync(backupPath, raw);
-    } catch {
-      hooksConfig = { hooks: [] };
-    }
-  }
+  const added = mergeHookGroups(config.hooks as Record<string, unknown>, CODEX_HOOK_EVENTS, (event) => `${cliCommand} ${event} --agent codex`);
+  const written = writeJsonIfChanged(hooksPath, config, file.raw);
 
-  if (!Array.isArray(hooksConfig.hooks)) {
-    hooksConfig.hooks = [];
-  }
-
-  let added = 0;
-  const events = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"];
-
-  for (const event of events) {
-    const exists = hooksConfig.hooks.some(
-      (h) => h.event === event && h.command.includes("ctrlplane hook")
-    );
-    if (!exists) {
-      hooksConfig.hooks.push({
-        event,
-        command: `${cliCommand} ${event}`,
-      });
-      added++;
-    }
-  }
-
-  writeFileSync(hooksPath, JSON.stringify(hooksConfig, null, 2));
-
-  return {
-    success: true,
-    hooksPath,
-    backupPath,
-    addedHooksCount: added,
-  };
+  return { success: true, hooksPath, backupPath: written.backupPath, addedHooksCount: added };
 }
 
+export function removeCodexHooks(projectPath: string): number {
+  const path = join(projectPath, ".codex", "hooks.json");
+  const file = readJsonObject(path);
+  if (file.raw === undefined || !file.data.hooks || typeof file.data.hooks !== "object" || Array.isArray(file.data.hooks)) return 0;
+  const n = stripHookGroups(file.data.hooks as Record<string, unknown>);
+  if (n > 0) writeJsonIfChanged(path, file.data, file.raw);
+  return n;
+}

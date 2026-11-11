@@ -18,6 +18,16 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
     mkdirSync(ctrlplaneDir, { recursive: true });
   }
 
+  // Spec and shared policy config are meant to be committed; runtime state is not.
+  const gitignorePath = join(ctrlplaneDir, ".gitignore");
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(
+      gitignorePath,
+      ["audit.db", "audit.db-*", "blobs/", "state/", "daemon.lock", "daemon.log", "dashboard.token", "*.local.json", ""].join("\n"),
+      "utf8",
+    );
+  }
+
   // 1. Initialize spec.md
   const specManager = new SpecManager(projectPath);
   specManager.init("Project Control Plane Specification", "Define your feature requirements and criteria.");
@@ -47,17 +57,17 @@ rules:
 
   if (targetAgent === "claude" || targetAgent === "all") {
     const claudeRes = injectClaudeHooks(projectPath);
-    messages.push(`Claude Code: Injected ${claudeRes.addedHooksCount} hook(s) into .claude/settings.json.`);
+    messages.push(`Claude Code: Installed ${claudeRes.addedHooksCount} hook(s) in .claude/settings.local.json.`);
   }
 
   if (targetAgent === "codex" || targetAgent === "all") {
     const codexRes = injectCodexHooks(projectPath);
-    messages.push(`Codex CLI: Injected ${codexRes.addedHooksCount} hook(s) into .codex/hooks.json.`);
+    messages.push(`Codex CLI: Installed ${codexRes.addedHooksCount} hook(s) in .codex/hooks.json (approve them once in Codex: "Review hooks").`);
   }
 
   if (targetAgent === "opencode" || targetAgent === "all") {
     const openRes = injectOpenCodePlugin(projectPath);
-    messages.push(`OpenCode: Registered plugin in opencode.json (${openRes.pluginAdded ? "added" : "already present"}).`);
+    messages.push(`OpenCode: Plugin at .opencode/plugins/ctrlplane.mjs (${openRes.pluginAdded ? "added" : "already present"}).`);
   }
 
   return {

@@ -1,4 +1,4 @@
-export type AgentType = "claude-code" | "codex" | "opencode" | "custom";
+export type AgentType = "claude-code" | "codex" | "opencode" | "cursor" | "gemini" | "custom";
 
 export type SessionStatus = "active" | "completed" | "aborted" | "paused";
 

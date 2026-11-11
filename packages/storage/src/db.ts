@@ -129,6 +129,41 @@ export class StorageEngine {
 
   // --- Session Methods ---
 
+  /** Creates the session row on first sight so its events satisfy the foreign key. Returns true if created. */
+  public ensureSession(session: Session): boolean {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO sessions (
+        id, agent_type, project_path, git_branch, base_commit_sha,
+        head_commit_sha, spec_id, status, started_at, ended_at, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const res = stmt.run(
+      session.id,
+      session.agentType,
+      session.projectPath,
+      session.gitBranch,
+      session.baseCommitSha,
+      session.headCommitSha ?? null,
+      session.specId ?? null,
+      session.status,
+      session.startedAt,
+      session.endedAt ?? null,
+      session.metadata ? JSON.stringify(session.metadata) : null
+    );
+    return Number(res.changes) > 0;
+  }
+
+  public updateSessionGit(id: string, gitBranch: string, baseCommitSha: string): void {
+    this.db.prepare(`UPDATE sessions SET git_branch = ?, base_commit_sha = ? WHERE id = ?`).run(gitBranch, baseCommitSha, id);
+  }
+
+  public lastSequenceNum(sessionId: string): number {
+    const row = this.db.prepare(`SELECT max(sequence_num) AS n FROM events WHERE session_id = ?`).get(sessionId) as
+      | { n: number | null }
+      | undefined;
+    return Number(row?.n ?? 0);
+  }
+
   public insertSession(session: Session): void {
     const stmt = this.db.prepare(`
       INSERT INTO sessions (
