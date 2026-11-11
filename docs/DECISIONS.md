@@ -51,3 +51,9 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Decision:** lint, format, typecheck, hygiene, tests on Linux, Windows and macOS with Node 22 and 24, CodeQL, dependency review, OSV and a full-history secret scan all fail the run. A known advisory or a fake test secret is excused by name in `osv-scanner.toml` or `.gitleaks.toml`, never by turning a scan off. An OSV exception has an `ignoreUntil` date.
 - **Why:** a check that only warns is ignored within a week. An exception with an end date gets looked at again; a disabled scan does not.
 - **Cost:** a new advisory in a dev tool can turn the weekly run red with no code change. That is the point: someone decides.
+
+## D-10 · An approval belongs to the exact spec text
+
+- **Decision:** `ctrlplane spec approve` writes `approved_hash` next to `status: approved`. A spec whose title and body no longer match that hash loads as `draft`, and so does a spec marked approved by hand with no hash. Agents may not run `spec approve`.
+- **Why:** the approved spec is injected into every session as the agreed criteria. If an edit kept the approval, an agent could change a criterion and still have it shown as agreed.
+- **Cost:** a spec approved before this change, or edited after approval, must be approved again.
