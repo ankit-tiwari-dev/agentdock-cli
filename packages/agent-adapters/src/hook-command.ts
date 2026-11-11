@@ -6,25 +6,43 @@ const CLI_BIN = fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)).
 
 /**
  * The command agents run for each hook. It points at this checkout's CLI with an absolute path
- * (forward slashes work in cmd, PowerShell and bash). CTRLPLANE_HOOK_COMMAND overrides it,
- * e.g. `npx -y @ctrlplane/cli hook` once the package is published.
+ * (forward slashes work in cmd, PowerShell and bash). CTRLPLANE_HOOK_COMMAND overrides it only
+ * when CTRLPLANE_ALLOW_HOOK_COMMAND_OVERRIDE=1 is set as well: otherwise anything that can set one
+ * environment variable for `ctrlplane init` could install a hook that does nothing.
  */
 export function defaultHookCommand(): string {
   const override = process.env.CTRLPLANE_HOOK_COMMAND?.trim();
-  if (override) return override;
+  if (override && process.env.CTRLPLANE_ALLOW_HOOK_COMMAND_OVERRIDE === "1") return override;
   return `node "${CLI_BIN}" hook`;
 }
 
+/**
+ * The exact shapes `init` writes, now and in earlier versions: `node "<...>/cli/src/bin.ts" hook <Event>`,
+ * `[npx [-y]] ctrlplane hook <Event>` or `npx -y @ctrlplane/cli hook <Event>`, optionally `--agent <name>`.
+ * Anything else (a user's `~/bin/ctrlplane hook-audit.sh`) belongs to someone else and is left alone.
+ */
+const OUR_HOOK_COMMAND =
+  /^\s*(?:node\s+"?[^"]*[\\/]cli[\\/]src[\\/]bin\.ts"?|(?:npx\s+(?:-y\s+|--yes\s+)?)?(?:@ctrlplane\/cli(?:@[\w.-]+)?|ctrlplane))\s+hook(?:\s+[A-Za-z]+)?(?:\s+--agent\s+[\w-]+)?\s*$/;
+
 /** Recognises hook entries we wrote, including those from earlier versions. */
 export function isCtrlplaneCommand(command: unknown): boolean {
-  return typeof command === "string" && (/ctrlplane\s+hook\b/.test(command) || /bin\.ts"?\s+hook\b/.test(command));
+  return typeof command === "string" && OUR_HOOK_COMMAND.test(command);
 }
 
 export function readJsonObject(path: string): { data: Record<string, unknown>; raw?: string } {
   if (!existsSync(path)) return { data: {} };
   const raw = readFileSync(path, "utf8");
-  if (!raw.trim()) return { data: {}, raw };
-  const parsed = JSON.parse(raw);
+  // Editors on Windows often save JSON with a byte-order mark, which JSON.parse rejects.
+  const text = raw.replace(/^\uFEFF/, "");
+  if (!text.trim()) return { data: {}, raw };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`${path} is not valid JSON (${(err as Error).message}); refusing to overwrite it.`, {
+      cause: err,
+    });
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`${path} is not a JSON object; refusing to overwrite it.`);
   }

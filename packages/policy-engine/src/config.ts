@@ -157,17 +157,25 @@ function pausePath(projectRoot: string): string {
   return join(projectRoot, ".ctrlplane", "state", "pause.json");
 }
 
-/** Active pause, or null. Expiry is checked when read; an expired file is removed. */
+/**
+ * Active pause, or null. Expiry is checked when read; an expired file is removed. The 8-hour
+ * ceiling is applied here too, so a hand-edited file cannot pause supervision for longer; a file
+ * without a valid start time cannot be bounded and counts as no pause.
+ */
 export function readPause(projectRoot: string, now = Date.now()): PauseState | null {
   const path = pausePath(projectRoot);
   if (!existsSync(path)) return null;
   try {
-    const state = JSON.parse(readFileSync(path, "utf8")) as PauseState;
-    if (typeof state.until !== "number" || state.until <= now) {
+    const state = JSON.parse(readFileSync(path, "utf8")) as Partial<PauseState> | null;
+    const first = state?.firstPausedAt;
+    const until = state?.until;
+    const valid = typeof first === "number" && Number.isFinite(first) && first <= now && typeof until === "number";
+    const capped = valid ? Math.min(until, first + PAUSE_CEILING_MS) : 0;
+    if (!valid || capped <= now) {
       rmSync(path, { force: true });
       return null;
     }
-    return state;
+    return { firstPausedAt: first, until: capped };
   } catch {
     return null;
   }

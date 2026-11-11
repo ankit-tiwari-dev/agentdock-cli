@@ -46,8 +46,29 @@ export function globToRegExp(glob: string): RegExp {
   return compiled;
 }
 
+/**
+ * The name the file system really opens. Windows ignores trailing dots and spaces in each path
+ * segment and treats `name:stream` / `name::$DATA` as the file `name`, so `.env::$DATA` and
+ * `.claude./settings.json` are read as `.env` and `.claude/settings.json`. Applied on every
+ * platform: a rule must never miss a protected file because of how its name was spelled.
+ */
+export function normalizeFsPath(path: string): string {
+  return path
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((seg, i) => {
+      if (seg === "" || seg === "." || seg === "..") return seg;
+      if (i === 0 && /^[a-zA-Z]:$/.test(seg)) return seg;
+      const colon = seg.indexOf(":");
+      const base = colon > 0 ? seg.slice(0, colon) : seg;
+      const trimmed = base.replace(/[. ]+$/, "");
+      return trimmed === "" ? base : trimmed;
+    })
+    .join("/");
+}
+
 export function matchesGlob(path: string, glob: string): boolean {
-  return globToRegExp(glob).test(path.replace(/\\/g, "/"));
+  return globToRegExp(glob).test(normalizeFsPath(path));
 }
 
 export function matchesAnyGlob(path: string, globs: string[]): boolean {

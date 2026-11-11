@@ -23,10 +23,15 @@ function run(event, payload, directory) {
     encoding: "utf8",
     timeout: 30000,
   });
-  return { code: r.status ?? 0, out: (r.stdout || "").trim(), err: (r.stderr || "").trim() };
+  return { code: r.status, signal: r.signal, error: r.error, out: (r.stdout || "").trim(), err: (r.stderr || "").trim() };
 }
 
 function enforce(result) {
+  // No exit code means the hook was killed, timed out or never started: no verdict, so block.
+  if (result.code === null || result.code === undefined || result.signal || result.error) {
+    const why = result.signal || (result.error && result.error.message) || "no exit code";
+    throw new Error("Blocked by ctrlplane: the supervision hook did not finish (" + why + ")");
+  }
   if (result.code === 2) throw new Error(result.err || "Blocked by ctrlplane");
   if (!result.out) return;
   try {
@@ -55,6 +60,21 @@ export const CtrlplanePlugin = async ({ directory }) => ({
 `;
 }
 
+/**
+ * Reads `.opencode/opencode.json` with `plugin` as an array: a single string becomes a one-item
+ * list (OpenCode accepts both), and any other value stops the install rather than being replaced.
+ * Exported so `init` can check the file before it changes anything.
+ */
+export function readOpenCodeConfig(path: string): { data: Record<string, unknown>; raw?: string } {
+  const file = readJsonObject(path);
+  const plugin = file.data.plugin;
+  if (plugin === undefined) file.data.plugin = [];
+  else if (typeof plugin === "string") file.data.plugin = [plugin];
+  else if (!Array.isArray(plugin))
+    throw new Error(`${path}: "plugin" is neither a string nor a list; refusing to overwrite it.`);
+  return file;
+}
+
 export function injectOpenCodePlugin(
   projectPath: string,
   hookCommand = defaultHookCommand(),
@@ -69,14 +89,15 @@ export function injectOpenCodePlugin(
   const configPath = join(dir, "opencode.json");
   const pluginPath = join(dir, "plugins", "ctrlplane.mjs");
 
+  const file = readOpenCodeConfig(configPath);
+  const config = file.data;
+
   mkdirSync(join(dir, "plugins"), { recursive: true });
   const source = buildOpenCodePlugin(hookCommand);
   const current = existsSync(pluginPath) ? readFileSync(pluginPath, "utf8") : "";
   if (current !== source) writeFileSync(pluginPath, source);
 
-  const file = readJsonObject(configPath);
-  const config = file.data;
-  const plugins = Array.isArray(config.plugin) ? (config.plugin as unknown[]) : [];
+  const plugins = config.plugin as unknown[];
   const pluginAdded = !plugins.includes(PLUGIN_REL);
   if (pluginAdded) plugins.push(PLUGIN_REL);
   config.plugin = plugins;

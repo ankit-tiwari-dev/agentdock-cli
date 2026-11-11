@@ -20,6 +20,18 @@ export interface DaemonLock {
   version?: string;
 }
 
+/**
+ * Marks a verdict produced because no daemon gave a usable answer (as opposed to a real policy
+ * decision); the hook then runs the rules in its own process.
+ */
+export const DAEMON_UNAVAILABLE = "daemon-unavailable";
+
+export function isDaemonLock(value: unknown): value is DaemonLock {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return Number.isInteger(v.pid) && (v.pid as number) > 0 && typeof v.ipcTarget === "string" && v.ipcTarget !== "";
+}
+
 export function isProcessAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -39,12 +51,15 @@ export function getRunningDaemonLock(projectPath: string): DaemonLock | null {
   const lockPath = join(projectPath, ".ctrlplane", "daemon.lock");
   if (!existsSync(lockPath)) return null;
 
-  let lock: DaemonLock;
+  let parsed: unknown;
   try {
-    lock = JSON.parse(readFileSync(lockPath, "utf8"));
+    parsed = JSON.parse(readFileSync(lockPath, "utf8"));
   } catch {
     return null;
   }
+  // A lock in any other shape (`null`, an array, a half-written object) means no usable daemon.
+  if (!isDaemonLock(parsed)) return null;
+  const lock = parsed;
 
   if (!isProcessAlive(lock.pid)) {
     try {

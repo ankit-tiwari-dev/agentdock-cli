@@ -18,6 +18,7 @@ import {
   buildProjectEngine,
   configStamp,
   CircuitBreaker,
+  fallbackProjectEngine,
   PolicyEngine,
   type ProjectEngine,
   type RuleOverride,
@@ -26,7 +27,14 @@ import { ContextRecorder, type RecorderOptions } from "../../context/src/recorde
 import { IPCServer, type IPCEndpoint } from "./ipc-server.ts";
 import { findProjectRoot } from "./lock.ts";
 
-export { findProjectRoot, getRunningDaemonLock, isProcessAlive, type DaemonLock } from "./lock.ts";
+export {
+  DAEMON_UNAVAILABLE,
+  findProjectRoot,
+  getRunningDaemonLock,
+  isDaemonLock,
+  isProcessAlive,
+  type DaemonLock,
+} from "./lock.ts";
 
 export const DAEMON_VERSION = "0.2.0";
 
@@ -99,7 +107,11 @@ export class SupervisorDaemon {
     this.dbPath = config.dbPath ?? join(this.projectRoot, ".ctrlplane", "audit.db");
     this.storage = new StorageEngine(this.dbPath);
     this.projectEngine = config.projectEngine ?? null;
-    this.policyEngine = this.projectEngine?.engine ?? new PolicyEngine(undefined, { overrides: config.overrides });
+    this.policyEngine =
+      this.projectEngine?.engine ??
+      (config.overrides
+        ? new PolicyEngine(undefined, { overrides: config.overrides })
+        : fallbackProjectEngine(this.projectRoot));
     this.recorderOptions = { aiSummaries: this.projectEngine?.config.context.aiSummaries ?? false, ...config.recorder };
     this.recorder = new ContextRecorder(this.storage, this.projectRoot, this.recorderOptions);
 

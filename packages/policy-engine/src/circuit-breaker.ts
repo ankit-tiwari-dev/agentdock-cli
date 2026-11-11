@@ -149,3 +149,6 @@ export class CircuitBreaker {
     return { ...this.state };
   }
 }
+
+// Shared with custom rules modules in the same process: its methods must not be swappable.
+Object.freeze(CircuitBreaker.prototype);

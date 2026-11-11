@@ -1,4 +1,4 @@
-import { DAEMON_UNAVAILABLE, dispatchHook } from "../../../agent-adapters/src/hook-client.ts";
+import { DAEMON_UNAVAILABLE, dispatchHook, isCiMode } from "../../../agent-adapters/src/hook-client.ts";
 import { formatHookOutput, type HookProcessOutput } from "../../../agent-adapters/src/hook-output.ts";
 import { normalizeHookPayload, type AgentHookPayload, type HookVerdictResponse } from "../../../core/src/index.ts";
 import { findProjectRoot } from "../../../daemon/src/lock.ts";
@@ -9,6 +9,8 @@ export interface HookRunOptions {
   timeoutMs?: number;
   /** Extra context to inject (SessionStart context pack). Resolved lazily so other events stay fast. */
   contextProvider?: (payload: AgentHookPayload, projectRoot: string) => Promise<string | undefined>;
+  /** Replaces the daemon call (tests). */
+  dispatch?: typeof dispatchHook;
 }
 
 // Tool-call hooks stay on the fast path: only these events load the context store.
@@ -34,22 +36,36 @@ export async function runHook(
   }
 
   const fallbackCwd = options.cwd ?? process.cwd();
-  const payload = normalizeHookPayload(eventName, raw, fallbackCwd, options.agent);
-  const projectRoot = findProjectRoot(payload.cwd) ?? findProjectRoot(fallbackCwd) ?? payload.cwd;
+  let payload: AgentHookPayload | undefined;
+  let projectRoot: string;
+  let verdict: HookVerdictResponse;
+  try {
+    payload = normalizeHookPayload(eventName, raw, fallbackCwd, options.agent);
+    projectRoot = findProjectRoot(payload.cwd) ?? findProjectRoot(fallbackCwd) ?? payload.cwd;
 
-  let verdict = await dispatchHook(payload, { projectPath: projectRoot, timeoutMs: options.timeoutMs });
+    const dispatch = options.dispatch ?? dispatchHook;
+    verdict = await dispatch(payload, { projectPath: projectRoot, timeoutMs: options.timeoutMs });
 
-  // No daemon: still enforce the rules in-process rather than letting everything through.
-  if (verdict.decision === "ALLOW" && verdict.matchedRuleId === DAEMON_UNAVAILABLE) {
-    verdict = await evaluateLocally(payload, projectRoot);
-    if (CONTEXT_EVENTS.has(payload.hookEventName)) {
-      try {
-        const { recordWithoutDaemon } = await import("../../../context/src/hook-context.ts");
-        recordWithoutDaemon(payload, projectRoot);
-      } catch {
-        // Context is a convenience; it must never change the verdict.
+    // No daemon: still enforce the rules in-process rather than letting everything through.
+    if (verdict.decision === "ALLOW" && verdict.matchedRuleId === DAEMON_UNAVAILABLE) {
+      verdict = await evaluateLocally(payload, projectRoot);
+      if (CONTEXT_EVENTS.has(payload.hookEventName)) {
+        try {
+          const { recordWithoutDaemon } = await import("../../../context/src/hook-context.ts");
+          recordWithoutDaemon(payload, projectRoot);
+        } catch {
+          // Context is a convenience; it must never change the verdict.
+        }
       }
     }
+  } catch (err) {
+    // An unexpected failure is never silent. In CI a tool call that could not be checked is
+    // blocked (as when no daemon runs there); locally the call goes ahead, as it does without a daemon.
+    const failClosed = (payload?.hookEventName ?? eventName ?? "PreToolUse") === "PreToolUse" && isCiMode();
+    return {
+      exitCode: failClosed ? 2 : 0,
+      stderr: `[ctrlplane hook error] ${failClosed ? "CI mode fails close: " : ""}${String(err)}`,
+    };
   }
 
   let extraContext: string | undefined;
@@ -68,8 +84,8 @@ export async function runHook(
 }
 
 async function evaluateLocally(payload: AgentHookPayload, projectRoot: string): Promise<HookVerdictResponse> {
-  const { buildProjectEngine, PolicyEngine } = await import("../../../policy-engine/src/index.ts");
-  let engine: InstanceType<typeof PolicyEngine>;
+  const { buildProjectEngine, fallbackProjectEngine } = await import("../../../policy-engine/src/index.ts");
+  let engine: ReturnType<typeof fallbackProjectEngine>;
   let paused = false;
   try {
     const project = await buildProjectEngine(projectRoot);
@@ -77,7 +93,7 @@ async function evaluateLocally(payload: AgentHookPayload, projectRoot: string): 
     paused = project.isPaused();
   } catch {
     // A broken config must not switch supervision off: fall back to the built-in rules.
-    engine = new PolicyEngine();
+    engine = fallbackProjectEngine(projectRoot);
   }
   const result = engine.evaluate({
     paused,

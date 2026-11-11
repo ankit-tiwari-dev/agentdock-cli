@@ -1,8 +1,29 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SpecManager } from "../../../intent/src/index.ts";
-import { injectClaudeHooks, injectCodexHooks, injectOpenCodePlugin } from "../../../agent-adapters/src/index.ts";
+import {
+  injectClaudeHooks,
+  injectCodexHooks,
+  injectOpenCodePlugin,
+  readCodexHooksFile,
+  readJsonObject,
+  readOpenCodeConfig,
+} from "../../../agent-adapters/src/index.ts";
 import { DEFAULT_PROJECT_CONFIG } from "../../../policy-engine/src/config.ts";
+
+/**
+ * Reads every agent config file `init` is about to change, so a file it cannot safely merge into
+ * (invalid JSON, wrong shape) stops the install before anything has been created or rewritten.
+ */
+function checkAgentConfigs(projectPath: string, targetAgent: string): void {
+  if (targetAgent === "claude" || targetAgent === "all") {
+    readJsonObject(join(projectPath, ".claude", "settings.json"));
+    readJsonObject(join(projectPath, ".claude", "settings.local.json"));
+  }
+  if (targetAgent === "codex" || targetAgent === "all") readCodexHooksFile(join(projectPath, ".codex", "hooks.json"));
+  if (targetAgent === "opencode" || targetAgent === "all")
+    readOpenCodeConfig(join(projectPath, ".opencode", "opencode.json"));
+}
 
 export function handleInit(options?: { projectPath?: string; agent?: string }): {
   success: boolean;
@@ -10,6 +31,7 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
 } {
   const projectPath = options?.projectPath ?? process.cwd();
   const ctrlplaneDir = join(projectPath, ".ctrlplane");
+  checkAgentConfigs(projectPath, options?.agent?.toLowerCase() ?? "all");
 
   if (!existsSync(ctrlplaneDir)) {
     mkdirSync(ctrlplaneDir, { recursive: true });

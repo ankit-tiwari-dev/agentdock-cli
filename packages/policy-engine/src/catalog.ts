@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import type { PolicyRule, RuleContext } from "../../core/src/index.ts";
-import { DEFAULT_SAFETY_RULES } from "./default-rules.ts";
+import { DEFAULT_SAFETY_RULES, createSafetyRules, deepFreeze, type SafetyRuleOptions } from "./default-rules.ts";
 import { argv, gitSubcommand } from "./command-checks.ts";
 import { matchesAnyGlob } from "./glob.ts";
+import { splitShellSegments } from "./shell.ts";
 
 function list(params: Record<string, unknown>, key: string): string[] {
   const v = params[key];
@@ -80,7 +81,48 @@ const INFRA_TOOLS: { id: string; name: string; bins: string[]; mutating: RegExp 
   },
 ];
 
-export const EXTENDED_RULES: PolicyRule[] = [
+const DOWNLOADERS = new Set(["curl", "wget", "iwr", "invoke-webrequest", "irm", "invoke-restmethod"]);
+const SCRIPT_RUNNERS = new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "fish",
+  "python",
+  "python3",
+  "node",
+  "perl",
+  "ruby",
+  "php",
+  "deno",
+  "bun",
+  "pwsh",
+  "powershell",
+  "iex",
+  "invoke-expression",
+  "source",
+  ".",
+]);
+const DOWNLOAD_SUBSTITUTION =
+  /(?:<\(|\$\(|`)\s*(?:\S*[\\/])?(?:curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod)\b/i;
+const PWSH_DOWNLOAD_EXPRESSION =
+  /\b(?:iex|invoke-expression)\s*[(\s]\s*\(*\s*(?:iwr|irm|invoke-webrequest|invoke-restmethod|curl|wget|new-object)\b/i;
+
+/** A download that runs as code: piped into, substituted into, or evaluated by a shell or interpreter. */
+function runsDownload(cmd: string): boolean {
+  if (PWSH_DOWNLOAD_EXPRESSION.test(cmd)) return true;
+  for (const seg of splitShellSegments(cmd)) {
+    if (!SCRIPT_RUNNERS.has(argv(seg.text)[0] ?? "")) continue;
+    if (seg.pipedFrom.some((stage) => DOWNLOADERS.has(argv(stage)[0] ?? ""))) return true;
+    if (DOWNLOAD_SUBSTITUTION.test(seg.text)) return true;
+  }
+  return false;
+}
+
+const PROC_ENVIRON = /^\/proc\/(?:self|thread-self|\d+|\*)\/environ$/;
+
+export const EXTENDED_RULES: readonly PolicyRule[] = deepFreeze([
   {
     id: "RULE-BLOCK-ENV-DUMP",
     name: "Block environment variable dumps",
@@ -99,6 +141,7 @@ export const EXTENDED_RULES: PolicyRule[] = [
         if (bin === "set" && t.length === 1) return true;
         if (bin === "export" && (t.length === 1 || t[1] === "-p")) return true;
         if (/^(get-childitem|gci|dir|ls)$/.test(bin) && /^env:\\?$/i.test(t[1] ?? "")) return true;
+        if (t.some((a) => PROC_ENVIRON.test(a))) return true;
         return /process\.env\)|os\.environ\b(?!\[|\.get)/.test(s);
       });
       return sub
@@ -123,7 +166,8 @@ export const EXTENDED_RULES: PolicyRule[] = [
       if (
         /\b(curl|wget|iwr|invoke-webrequest|irm|invoke-restmethod)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|python3?|node|iex|invoke-expression|pwsh|powershell)\b/i.test(
           cmd,
-        )
+        ) ||
+        runsDownload(cmd)
       ) {
         return {
           message: `Security Policy: piping a download straight into a shell runs unreviewed code. (Triggered by command: '${cmd}')`,
@@ -586,7 +630,15 @@ export const EXTENDED_RULES: PolicyRule[] = [
       return n > 0 ? { message: `Push your ${n} local commit(s) before finishing.` } : null;
     },
   },
-];
+]);
 
-/** Built-in catalog in evaluation order: integrity and safety first, workflow gates last. */
-export const BUILTIN_RULES: PolicyRule[] = [...DEFAULT_SAFETY_RULES, ...EXTENDED_RULES];
+/** Built-in catalog in evaluation order: integrity and safety first, workflow gates last. Frozen. */
+export const BUILTIN_RULES: readonly PolicyRule[] = deepFreeze([...DEFAULT_SAFETY_RULES, ...EXTENDED_RULES]);
+
+/**
+ * A fresh copy of the catalog for one project. The safety rules are rebuilt from scratch, so
+ * nothing a custom rules module did to the exported objects can reach the engine.
+ */
+export function createBuiltinRules(options: SafetyRuleOptions = {}): readonly PolicyRule[] {
+  return deepFreeze([...createSafetyRules(options), ...EXTENDED_RULES]);
+}

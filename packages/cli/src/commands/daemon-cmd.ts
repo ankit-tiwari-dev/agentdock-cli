@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, unlinkSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SupervisorDaemon } from "../../../daemon/src/index.ts";
-import { getRunningDaemonLock, isProcessAlive } from "../../../daemon/src/lock.ts";
+import { getRunningDaemonLock, isProcessAlive, type DaemonLock } from "../../../daemon/src/lock.ts";
 import { sendDaemonControl } from "../../../agent-adapters/src/hook-client.ts";
 
 const BIN_PATH = fileURLToPath(new URL("../bin.ts", import.meta.url));
@@ -12,15 +12,44 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function lockPath(root: string): string {
+  return join(root, ".ctrlplane", "daemon.lock");
+}
+
+/** Removes the lock only if it still describes `lock` (a new daemon may have replaced it meanwhile). */
+function removeStaleLock(root: string, lock: DaemonLock): void {
+  try {
+    const current = JSON.parse(readFileSync(lockPath(root), "utf8")) as Partial<DaemonLock> | null;
+    if (current?.pid === lock.pid && current?.ipcTarget === lock.ipcTarget) unlinkSync(lockPath(root));
+  } catch {
+    // Already gone or unreadable: nothing to remove.
+  }
+}
+
+/**
+ * The lock of a daemon that is running AND answers a ping on its IPC target, with its version.
+ * A live PID alone proves nothing: after a crash or reboot the PID can belong to an unrelated
+ * program. A lock whose daemon does not answer is stale; it is removed and null is returned, so
+ * `stop` never kills a process just because its PID is in the lock.
+ */
+async function confirmedDaemon(root: string): Promise<{ lock: DaemonLock; version: string } | null> {
+  const lock = getRunningDaemonLock(root);
+  if (!lock) return null;
+  const pong = await sendDaemonControl(lock.ipcTarget, "ping", 1000);
+  if (pong) return { lock, version: pong.stdoutMessage ?? "?" };
+  removeStaleLock(root, lock);
+  return null;
+}
+
 /**
  * Starts the daemon as a detached background process. The CLI itself exits right after,
  * so the daemon must not live inside this process.
  */
 export async function handleStartDaemon(projectPath = process.cwd(), timeoutMs = 8000): Promise<string> {
   const root = resolve(projectPath);
-  const existing = getRunningDaemonLock(root);
-  if (existing) {
-    return `Supervisor daemon is already running (PID: ${existing.pid}, IPC: ${existing.ipcTarget}).`;
+  const running = await confirmedDaemon(root);
+  if (running) {
+    return `Supervisor daemon is already running (PID: ${running.lock.pid}, IPC: ${running.lock.ipcTarget}).`;
   }
 
   const ctrlplaneDir = join(root, ".ctrlplane");
@@ -78,14 +107,16 @@ export async function handleRunDaemon(projectPath = process.cwd()): Promise<numb
 
 export async function handleStopDaemon(projectPath = process.cwd()): Promise<string> {
   const root = resolve(projectPath);
-  const existing = getRunningDaemonLock(root);
-  if (!existing) {
+  const running = await confirmedDaemon(root);
+  if (!running) {
     return "No running supervisor daemon found.";
   }
+  const existing = running.lock;
 
   await sendDaemonControl(existing.ipcTarget, "shutdown");
   for (let i = 0; i < 30 && isProcessAlive(existing.pid); i++) await sleep(100);
 
+  // Only reached for a PID that answered as our daemon a moment ago.
   if (isProcessAlive(existing.pid)) {
     try {
       process.kill(existing.pid);
@@ -94,25 +125,16 @@ export async function handleStopDaemon(projectPath = process.cwd()): Promise<str
     }
   }
 
-  const lockPath = join(root, ".ctrlplane", "daemon.lock");
-  if (existsSync(lockPath)) {
-    try {
-      unlinkSync(lockPath);
-    } catch {
-      // Already gone.
-    }
-  }
+  if (existsSync(lockPath(root))) removeStaleLock(root, existing);
   return `Supervisor daemon stopped (PID: ${existing.pid}).`;
 }
 
 export async function handleStatus(projectPath = process.cwd()): Promise<string> {
   const root = resolve(projectPath);
-  const existing = getRunningDaemonLock(root);
-  if (!existing) {
+  const running = await confirmedDaemon(root);
+  if (!running) {
     return "Supervisor daemon: OFFLINE\nStatus: No active session monitored. Hooks still enforce rules in-process.";
   }
-
-  const pong = await sendDaemonControl(existing.ipcTarget, "ping", 1000);
-  const health = pong ? `responding (v${pong.stdoutMessage ?? "?"})` : "NOT RESPONDING to IPC";
-  return `Supervisor daemon: RUNNING\nPID: ${existing.pid}\nIPC Endpoint: ${existing.ipcTarget}\nHealth: ${health}`;
+  const { lock, version } = running;
+  return `Supervisor daemon: RUNNING\nPID: ${lock.pid}\nIPC Endpoint: ${lock.ipcTarget}\nHealth: responding (v${version})`;
 }

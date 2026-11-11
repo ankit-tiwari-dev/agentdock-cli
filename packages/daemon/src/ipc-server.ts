@@ -3,6 +3,7 @@ import { platform } from "node:os";
 import { join } from "node:path";
 import { unlinkSync, existsSync } from "node:fs";
 import type { AgentHookPayload, HookVerdictResponse } from "../../core/src/index.ts";
+import { DAEMON_UNAVAILABLE } from "./lock.ts";
 
 /** Tool payloads can be large (whole file writes); anything past this is not a hook frame. */
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
@@ -65,10 +66,12 @@ export class IPCServer {
           const response = await this.hookHandler(payload);
           socket.write(JSON.stringify(response) + "\n");
         } catch (err) {
+          // Not a verdict: the marker makes the hook run the same rules in its own process.
           const errorResponse: HookVerdictResponse = {
-            decision: "ALLOW", // Fail-open on protocol error
+            decision: "ALLOW",
             exitCode: 0,
             stderrMessage: `[ctrlplane IPC error] Failed to process payload: ${String(err)}`,
+            matchedRuleId: DAEMON_UNAVAILABLE,
             latencyMs: 0,
           };
           socket.write(JSON.stringify(errorResponse) + "\n");

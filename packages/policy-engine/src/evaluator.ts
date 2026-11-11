@@ -14,7 +14,7 @@ import {
 } from "../../core/src/index.ts";
 import { BUILTIN_RULES } from "./catalog.ts";
 import { CircuitBreaker } from "./circuit-breaker.ts";
-import { matchesAnyGlob, toProjectPath } from "./glob.ts";
+import { matchesAnyGlob, normalizeFsPath, toProjectPath } from "./glob.ts";
 import { splitShellCommands } from "./shell.ts";
 
 export interface RuleOverride {
@@ -61,14 +61,23 @@ const SEVERITY: Record<PolicyAction, number> = {
   DENY: 3,
 };
 
+const warned = new Set<string>();
+
+/** One stderr line per distinct problem, so a broken custom rule is visible without flooding hooks. */
+function warnOnce(message: string): void {
+  if (warned.has(message)) return;
+  warned.add(message);
+  process.stderr.write(`[ctrlplane policy] ${message}\n`);
+}
+
 export class PolicyEngine {
   private rules: PolicyRule[];
   private overrides: Record<string, RuleOverride>;
   private circuitBreaker: CircuitBreaker;
   private compiledPatterns = new Map<string, RegExp[]>();
 
-  constructor(customRules?: PolicyRule[], options?: PolicyEngineOptions) {
-    this.rules = customRules ?? [...BUILTIN_RULES];
+  constructor(customRules?: readonly PolicyRule[], options?: PolicyEngineOptions) {
+    this.rules = [...(customRules ?? BUILTIN_RULES)];
     this.overrides = options?.overrides ?? {};
     this.circuitBreaker = options?.breaker ?? new CircuitBreaker();
   }
@@ -106,18 +115,25 @@ export class PolicyEngine {
     const observed: NonNullable<PolicyEvaluationResult["observed"]> = [];
     const instructions: Verdict[] = [];
 
+    // The agent is already continuing because a Stop hook blocked it once; blocking again would loop.
+    const stopLoop = !!context.stopHookActive && (ctx.event === "Stop" || ctx.event === "SubagentStop");
+
     for (const rule of this.rules) {
-      if (rule.event !== ctx.event) continue;
-      const { enabled, mode, params } = this.resolveRule(rule);
-      if (!enabled) continue;
-      if (context.paused && !rule.alwaysOn) continue;
-      if (!this.matchesTool(rule, ctx)) continue;
+      let matched: { hit: RuleHit; mode: PolicyMode } | null;
+      try {
+        matched = this.applyRule(rule, ctx, !!context.paused);
+      } catch (err) {
+        // A malformed rule (usually a custom one) is skipped; the rules after it still run.
+        warnOnce(`rule ${String(rule?.id)} skipped: ${String(err)}`);
+        continue;
+      }
+      if (!matched) continue;
+      const { hit, mode } = matched;
 
-      const hit = this.matchRule(rule, ctx, params);
-      if (!hit) continue;
-
-      const decision = hit.action ?? this.overrides[rule.id]?.action ?? rule.action;
+      // An always-on rule's action is pinned like its enabled flag and mode: config cannot soften it.
+      let decision = hit.action ?? (rule.alwaysOn ? rule.action : (this.overrides[rule.id]?.action ?? rule.action));
       if (decision === "ALLOW") continue;
+      if (stopLoop && SEVERITY[decision] > SEVERITY.INSTRUCT) decision = "INSTRUCT";
 
       if (mode === "observe") {
         observed.push({ ruleId: rule.id, wouldDecide: decision, reason: hit.message });
@@ -175,7 +191,7 @@ export class PolicyEngine {
     const canonical = canonicalizeToolInput(context.toolName ?? "", context.toolInput);
     const command = context.command ?? canonical.command;
     const rawPaths = context.filePath ? [context.filePath] : canonical.filePaths;
-    const filePaths = rawPaths.map((p) => toProjectPath(p, projectRoot));
+    const filePaths = rawPaths.map((p) => toProjectPath(normalizeFsPath(p), projectRoot));
 
     const isExistingFile = (relPath: string): boolean => {
       if (context.isExistingFile !== undefined) return context.isExistingFile;
@@ -203,6 +219,17 @@ export class PolicyEngine {
     };
   }
 
+  /** The rule's hit and effective mode when it applies to this call, else null. May throw for a malformed rule. */
+  private applyRule(rule: PolicyRule, ctx: RuleContext, paused: boolean): { hit: RuleHit; mode: PolicyMode } | null {
+    if (rule.event !== ctx.event) return null;
+    const { enabled, mode, params } = this.resolveRule(rule);
+    if (!enabled) return null;
+    if (paused && !rule.alwaysOn) return null;
+    if (!this.matchesTool(rule, ctx)) return null;
+    const hit = this.matchRule(rule, ctx, params);
+    return hit ? { hit, mode } : null;
+  }
+
   private matchesTool(rule: PolicyRule, ctx: RuleContext): boolean {
     if (!rule.targetTools || rule.targetTools.length === 0 || rule.targetTools.includes("*")) return true;
     if (!ctx.toolName) return false;
@@ -212,7 +239,15 @@ export class PolicyEngine {
   private patternsFor(rule: PolicyRule): RegExp[] {
     let compiled = this.compiledPatterns.get(rule.id);
     if (!compiled) {
-      compiled = (rule.commandPatterns ?? []).map((p) => new RegExp(p, "i"));
+      compiled = [];
+      for (const p of rule.commandPatterns ?? []) {
+        try {
+          compiled.push(new RegExp(p, "i"));
+        } catch (err) {
+          // One bad pattern must not end the evaluation (and so allow the call); skip just that pattern.
+          warnOnce(`rule ${rule.id}: invalid commandPatterns entry ${JSON.stringify(p)} skipped: ${String(err)}`);
+        }
+      }
       this.compiledPatterns.set(rule.id, compiled);
     }
     return compiled;
@@ -257,3 +292,7 @@ export class PolicyEngine {
     }
   }
 }
+
+// A custom rules module runs in this process; it must not be able to swap the evaluator's methods.
+Object.freeze(PolicyEngine.prototype);
+Object.freeze(PolicyEngine);
