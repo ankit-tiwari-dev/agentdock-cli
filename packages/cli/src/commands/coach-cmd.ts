@@ -1,9 +1,13 @@
 import { evaluatePromptQuality } from "../../../explanation/src/prompt-coach.ts";
+import type { CommandResult } from "./policies-cmd.ts";
 
-export function handleCoachCommand(promptArgs: string[]): string {
+export function handleCoachCommand(promptArgs: string[]): CommandResult {
   const prompt = promptArgs.join(" ").trim();
   if (!prompt) {
-    return 'Usage: ctrlplane coach "<prompt text>"\nExample: ctrlplane coach "Please update auth.ts and run tests"';
+    return {
+      output: 'Usage: ctrlplane coach "<prompt text>"\nExample: ctrlplane coach "Please update auth.ts and run tests"',
+      exitCode: 1,
+    };
   }
 
   const feedback = evaluatePromptQuality(prompt);
@@ -36,5 +40,5 @@ export function handleCoachCommand(promptArgs: string[]): string {
     lines.push(feedback.suggestedPrompt);
   }
 
-  return lines.join("\n");
+  return { output: lines.join("\n"), exitCode: 0 };
 }

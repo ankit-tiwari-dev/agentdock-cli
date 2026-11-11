@@ -1,10 +1,28 @@
 import type { AcceptanceCriterion, CriterionFinding, CodeEvidence } from "../../core/src/index.ts";
-import { parseUnifiedDiff, type FileDiff } from "../../git-analyzer/src/index.ts";
+import { parseUnifiedDiff, isTestFile, type FileDiff, type DiffLine } from "../../git-analyzer/src/index.ts";
 
 export interface SemanticAuditContext {
   criteria: AcceptanceCriterion[];
   diffUnified?: string;
   testSuitePassed: boolean;
+  /** False when no test command ran; a criterion is then never DETERMINISTIC_PASS. */
+  testSuiteRan: boolean;
+}
+
+/** Docs describe intent, they do not implement it. */
+function isDocFile(filePath: string): boolean {
+  const p = filePath.replace(/\\/g, "/").toLowerCase();
+  return /(^|\/)docs?\//.test(p) || /\.(md|mdx|markdown|rst|adoc|txt)$/.test(p);
+}
+
+/** A line that says the work is not done is not evidence that it is. */
+const NOT_DONE = /\b(todo|fixme|xxx)\b|\bnot\s+(yet\s+)?(done|implemented)\b/i;
+
+/** Evidence comes only from added lines in source files: not tests, docs, deleted files or TODO lines. */
+function evidenceLines(file: FileDiff, lines: DiffLine[]): DiffLine[] {
+  if (file.isDeletedFile || file.newPath === "/dev/null") return [];
+  if (isTestFile(file.newPath) || isDocFile(file.newPath)) return [];
+  return lines.filter((l) => l.type === "add" && !NOT_DONE.test(l.content));
 }
 
 export function auditCriteriaAgainstEvidence(context: SemanticAuditContext): CriterionFinding[] {
@@ -12,8 +30,8 @@ export function auditCriteriaAgainstEvidence(context: SemanticAuditContext): Cri
   const findings: CriterionFinding[] = [];
 
   for (const criterion of context.criteria) {
-    // 1. If test suite failed and criterion is deterministic testable, fail it
-    if (criterion.category === "DETERMINISTIC_TESTABLE" && !context.testSuitePassed) {
+    // 1. If the test suite ran and failed and criterion is deterministic testable, fail it
+    if (criterion.category === "DETERMINISTIC_TESTABLE" && context.testSuiteRan && !context.testSuitePassed) {
       findings.push({
         criterionId: criterion.id,
         verdict: "DISCREPANCY",
@@ -35,8 +53,13 @@ export function auditCriteriaAgainstEvidence(context: SemanticAuditContext): Cri
         rationale: `Evidence verified in ${evidence.filePath}:${evidence.lineStart}-${evidence.lineEnd}`,
       });
     } else {
-      // If test suite passed and it's a testable criterion without specific line evidence
-      if (criterion.category === "DETERMINISTIC_TESTABLE" && context.testSuitePassed && fileDiffs.length > 0) {
+      // If a test run actually happened and passed and it's a testable criterion without specific line evidence
+      if (
+        criterion.category === "DETERMINISTIC_TESTABLE" &&
+        context.testSuiteRan &&
+        context.testSuitePassed &&
+        fileDiffs.length > 0
+      ) {
         findings.push({
           criterionId: criterion.id,
           verdict: "DETERMINISTIC_PASS",
@@ -69,8 +92,9 @@ function findCodeEvidenceForCriterion(criterion: AcceptanceCriterion, fileDiffs:
 
   for (const file of fileDiffs) {
     for (const hunk of file.hunks) {
+      const added = evidenceLines(file, hunk.lines);
       // Check individual added lines
-      for (const line of hunk.lines) {
+      for (const line of added) {
         if (line.type === "add") {
           const contentLower = line.content.toLowerCase();
 
@@ -107,14 +131,11 @@ function findCodeEvidenceForCriterion(criterion: AcceptanceCriterion, fileDiffs:
       }
 
       // Check across entire hunk
-      const addedText = hunk.lines
-        .filter((l) => l.type === "add")
-        .map((l) => l.content.toLowerCase())
-        .join(" ");
+      const addedText = added.map((l) => l.content.toLowerCase()).join(" ");
 
       const hunkMatchCount = keywords.filter((kw) => addedText.includes(kw)).length;
-      if (hunkMatchCount >= Math.min(2, keywords.length)) {
-        const firstAdded = hunk.lines.find((l) => l.type === "add");
+      if (added.length > 0 && hunkMatchCount >= Math.min(2, keywords.length)) {
+        const firstAdded = added[0];
         return {
           filePath: file.newPath,
           lineStart: firstAdded?.newLineNumber ?? hunk.newStart,

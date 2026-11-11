@@ -31,6 +31,10 @@ new file mode 100644
     projectPath: "./",
     spec,
     diffUnified: diff,
+    // PASSED needs every check to have actually run and passed.
+    testCommand: "node --version",
+    typecheckCommand: "node --version",
+    lintCommand: "node --version",
   });
 
   assert.equal(report.overallStatus, "PASSED");

@@ -2,7 +2,7 @@ import type { ExplanationReport, RiskLevel } from "../../core/src/index.ts";
 import { computeDiffBlastRadius } from "./blast-radius.ts";
 import { auditDependencyChanges } from "./dependency-auditor.ts";
 import { generateSocraticQuiz } from "./quiz-generator.ts";
-import { parseUnifiedDiff } from "../../git-analyzer/src/index.ts";
+import { fileDiffPath, parseUnifiedDiff } from "../../git-analyzer/src/index.ts";
 
 export interface ExplainOptions {
   sessionId: string;
@@ -21,8 +21,9 @@ export class ExplanationEngine {
     let riskLevel: RiskLevel = "LOW";
     const potentialRisks: string[] = [];
 
-    const touchesAuth = fileDiffs.some((f) => /auth|login|token|jwt|crypto|security/i.test(f.newPath));
-    const touchesBilling = fileDiffs.some((f) => /billing|stripe|payment|invoice/i.test(f.newPath));
+    // fileDiffPath gives the old path for a deleted file, whose new path is /dev/null.
+    const touchesAuth = fileDiffs.some((f) => /auth|login|token|jwt|crypto|security/i.test(fileDiffPath(f)));
+    const touchesBilling = fileDiffs.some((f) => /billing|stripe|payment|invoice/i.test(fileDiffPath(f)));
 
     if (touchesBilling) {
       riskLevel = "CRITICAL";

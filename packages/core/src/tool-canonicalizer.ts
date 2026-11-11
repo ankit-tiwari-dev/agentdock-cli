@@ -50,6 +50,10 @@ const TOOL_MAPPINGS: Record<string, CanonicalToolVerb> = {
   patch: "file_edit",
   file_edit: "file_edit",
   modify: "file_edit",
+  // There is no separate delete verb: deleting or moving a file is an edit, so the file rules
+  // (protected tests, secrets, control plane files) apply to it.
+  delete_file: "file_edit",
+  move_file: "file_edit",
 
   read: "file_read",
   read_file: "file_read",
@@ -64,6 +68,8 @@ const TOOL_MAPPINGS: Record<string, CanonicalToolVerb> = {
   ls: "file_list",
   list: "file_list",
   list_dir: "file_list",
+  list_directory: "file_list",
+  search_file_content: "file_list",
   codebase_search: "file_list",
 
   webfetch: "web_fetch",
@@ -78,9 +84,15 @@ const TOOL_MAPPINGS: Record<string, CanonicalToolVerb> = {
   agent: "subagent",
 };
 
+// MCP tools are named `mcp__<server>__<tool>`. Only file-changing tools are mapped, so an MCP tool
+// that happens to be called `run` or `exec` is not treated as a shell.
+const MCP_FILE_TOOLS = new Set(["write_file", "create_file", "edit_file", "delete_file", "move_file"]);
+
 export function canonicalizeToolName(rawToolName?: string): CanonicalToolVerb {
   if (!rawToolName) return "unknown";
   const normalized = rawToolName.trim().toLowerCase();
+  const mcp = /^mcp__.+__([a-z0-9_]+)$/.exec(normalized);
+  if (mcp) return MCP_FILE_TOOLS.has(mcp[1]) ? (TOOL_MAPPINGS[mcp[1]] ?? "unknown") : "unknown";
   return TOOL_MAPPINGS[normalized] ?? "unknown";
 }
 
@@ -93,7 +105,22 @@ export function sameToolKind(a: string, b: string): boolean {
 
 const COMMAND_KEYS = ["command", "cmd", "CommandLine", "script", "code"];
 const PATH_KEYS = ["file_path", "filePath", "path", "Path", "notebook_path", "target_file", "file", "absolute_path"];
-const CONTENT_KEYS = ["content", "Content", "new_string", "replacement", "new_content", "patch", "input", "text"];
+const CONTENT_KEYS = [
+  "content",
+  "Content",
+  "new_string",
+  "replacement",
+  "new_content",
+  "patch",
+  // OpenCode `patch`
+  "patchText",
+  // NotebookEdit
+  "new_source",
+  "input",
+  "text",
+];
+// Second paths of a move (`move_file`): both ends are file targets.
+const MOVE_PATH_KEYS = ["source", "destination"];
 
 /** Codex sends `["bash", "-lc", "<script>"]`; the script is what the shell runs. */
 function commandFromValue(value: unknown): string | undefined {
@@ -164,6 +191,12 @@ export function canonicalizeToolInput(
   if (Array.isArray(rawInput.paths)) {
     for (const p of rawInput.paths) if (typeof p === "string") filePaths.push(p);
   }
+  if (canonicalVerb === "file_write" || canonicalVerb === "file_edit") {
+    for (const key of MOVE_PATH_KEYS) {
+      const v = rawInput[key];
+      if (typeof v === "string" && v && !filePaths.includes(v)) filePaths.push(v);
+    }
+  }
 
   let content: string | undefined;
   for (const key of CONTENT_KEYS) {
@@ -172,8 +205,16 @@ export function canonicalizeToolInput(
       break;
     }
   }
+  // MultiEdit sends `edits: [{ old_string, new_string }, ...]`; the new strings are the content.
+  if (content === undefined && Array.isArray(rawInput.edits)) {
+    const parts = (rawInput.edits as unknown[])
+      .map((e) => (typeof e === "object" && e !== null ? (e as Record<string, unknown>).new_string : undefined))
+      .filter((s): s is string => typeof s === "string");
+    if (parts.length > 0) content = parts.join("\n");
+  }
 
-  if (content && /^\*\*\* Begin Patch/m.test(content)) {
+  // An OpenCode patchText has `*** Update File:` lines without a `*** Begin Patch` line.
+  if (content && (/^\*\*\* Begin Patch/m.test(content) || typeof rawInput.patchText === "string")) {
     for (const f of filesFromPatch(content)) if (!filePaths.includes(f)) filePaths.push(f);
   }
   if (command && /\*\*\* Begin Patch/.test(command)) {

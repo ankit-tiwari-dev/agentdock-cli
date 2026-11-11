@@ -78,7 +78,8 @@ export function findBuildArtifacts(files: string[]): Finding[] {
 export function findUnpinnedActions(file: string, text: string): Finding[] {
   const findings: Finding[] = [];
   text.split("\n").forEach((line, index) => {
-    const match = /^\s*-?\s*uses:\s*["']?([^"'\s#]+)/.exec(line);
+    // Block style `- uses: x` / `  uses: x`, and flow style `- { name: y, uses: x }`.
+    const match = /(?:^\s*-?\s*|[{,]\s*)uses:\s*["']?([^"'\s#,}]+)/.exec(line);
     if (!match) return;
     const target = match[1];
     if (target.startsWith("./") || PINNED_ACTION.test(target) || PINNED_DOCKER.test(target)) return;
@@ -91,10 +92,25 @@ export function findUnpinnedActions(file: string, text: string): Finding[] {
   return findings;
 }
 
-export function findPackagesWithoutTests(packages: Array<{ name: string; testFiles: string[] }>): Finding[] {
+/** A test file counts only if it declares a test; an empty `*.test.ts` does not. */
+const DECLARES_TEST = /\b(?:test|it|describe)\s*\(/;
+
+export function findPackagesWithoutTests(
+  packages: Array<{ name: string; testFiles: string[] }>,
+  readTestFile?: (pkgName: string, file: string) => string,
+): Finding[] {
   return packages
-    .filter((pkg) => !pkg.testFiles.some((file) => file.endsWith(".test.ts")))
-    .map((pkg) => ({ check: "tests", file: `packages/${pkg.name}`, detail: "package has no tests/*.test.ts" }));
+    .filter(
+      (pkg) =>
+        !pkg.testFiles.some(
+          (file) => file.endsWith(".test.ts") && (!readTestFile || DECLARES_TEST.test(readTestFile(pkg.name, file))),
+        ),
+    )
+    .map((pkg) => ({
+      check: "tests",
+      file: `packages/${pkg.name}`,
+      detail: "package has no tests/*.test.ts that declares a test",
+    }));
 }
 
 export function findLockfileDrift(packageDirs: string[], lockfile: { packages?: Record<string, unknown> }): Finding[] {
@@ -156,6 +172,7 @@ function runAllChecks(root: string): Finding[] {
         const testDir = join(root, "packages", name, "tests");
         return { name, testFiles: existsSync(testDir) ? readdirSync(testDir) : [] };
       }),
+      (name, file) => readFileSync(join(root, "packages", name, "tests", file), "utf8"),
     ),
     ...findLockfileDrift(packageDirs, JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"))),
   );

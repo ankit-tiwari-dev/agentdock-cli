@@ -10,6 +10,7 @@ export interface VerifySessionOptions {
   gitCommitSha?: string;
   testCommand?: string;
   typecheckCommand?: string;
+  lintCommand?: string;
   diffUnified?: string;
 }
 
@@ -20,6 +21,7 @@ export class VerifierEngine {
       projectPath: options.projectPath,
       testCommand: options.testCommand,
       typecheckCommand: options.typecheckCommand,
+      lintCommand: options.lintCommand,
       diffUnified: options.diffUnified,
     });
 
@@ -28,31 +30,42 @@ export class VerifierEngine {
       criteria: options.spec.acceptanceCriteria,
       diffUnified: options.diffUnified,
       testSuitePassed: deterministicResults.testSuitePassed,
+      testSuiteRan: deterministicResults.testSuiteStatus !== "NOT_RUN",
     });
 
-    // 3. Compute overall status
+    // 3. Compute overall status. PASSED needs every check to have run and passed:
+    // a check that did not run leaves the result at NEEDS_ATTENTION at best.
     let overallStatus: OverallStatus = "PASSED";
 
-    const hasDeterministicFailure =
-      !deterministicResults.testSuitePassed ||
-      !deterministicResults.typecheckPassed ||
-      deterministicResults.testTamperDetected;
+    const checks = {
+      "test suite": deterministicResults.testSuiteStatus,
+      typecheck: deterministicResults.typecheckStatus,
+      lint: deterministicResults.lintStatus,
+    };
+    const notRun = Object.entries(checks)
+      .filter(([, status]) => status === "NOT_RUN")
+      .map(([name]) => name);
+
+    const hasDeterministicFailure = Object.values(checks).includes("FAIL") || deterministicResults.testTamperDetected;
 
     const hasDiscrepancy = findings.some((f) => f.verdict === "DISCREPANCY");
     const hasUnchecked = findings.some((f) => f.verdict === "UNCHECKED");
 
     if (hasDeterministicFailure || hasDiscrepancy) {
       overallStatus = "FAILED";
-    } else if (hasUnchecked) {
+    } else if (notRun.length > 0 || hasUnchecked) {
       overallStatus = "NEEDS_ATTENTION";
     }
 
+    const notVerified = notRun.length > 0 ? `Not verified: ${notRun.join(", ")} NOT RUN (no command configured).` : "";
     const summary =
       overallStatus === "PASSED"
         ? "All deterministic checks passed and all acceptance criteria verified with concrete code evidence."
         : overallStatus === "NEEDS_ATTENTION"
-          ? "Deterministic checks passed, but some criteria remain UNCHECKED. Review code before merging."
-          : "Verification FAILED: Broken tests, compiler errors, or test assertion tampering detected.";
+          ? [notVerified, hasUnchecked ? "Some criteria remain UNCHECKED." : "", "Review code before merging."]
+              .filter(Boolean)
+              .join(" ")
+          : "Verification FAILED: Broken tests, compiler errors, lint errors, or test assertion tampering detected.";
 
     const report: VerificationReport = {
       id: `rep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,

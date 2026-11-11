@@ -1,8 +1,15 @@
-import type { VerificationReport } from "../../core/src/index.ts";
+import type { CheckStatus, VerificationReport } from "../../core/src/index.ts";
+
+function checkLabel(status: CheckStatus | undefined): string {
+  if (status === "PASS") return "PASS";
+  if (status === "FAIL") return "FAIL";
+  return "NOT RUN";
+}
 
 export function formatVerificationReportText(report: VerificationReport): string {
   const divider = "=".repeat(80);
   const thinDivider = "-".repeat(80);
+  const results = report.deterministicResults;
 
   const lines: string[] = [
     divider,
@@ -13,10 +20,10 @@ export function formatVerificationReportText(report: VerificationReport): string
     `Status:   ${report.overallStatus}`,
     "",
     "TIER 1: DETERMINISTIC SYSTEM CHECKS",
-    `  • Compiler / Typecheck:   ${report.deterministicResults.typecheckPassed ? "PASS" : "FAIL"}`,
-    `  • Test Suite Execution:   ${report.deterministicResults.testSuitePassed ? "PASS" : "FAIL"}`,
-    `  • Test Tamper Integrity:  ${report.deterministicResults.testTamperDetected ? "TAMPERING DETECTED!" : "PASS"}`,
-    `  • Lint / Static Analysis: ${report.deterministicResults.lintPassed ? "PASS" : "FAIL"}`,
+    `  • Compiler / Typecheck:   ${checkLabel(results.typecheckStatus)}`,
+    `  • Test Suite Execution:   ${checkLabel(results.testSuiteStatus)}`,
+    `  • Test Tamper Integrity:  ${results.testTamperDetected ? "TAMPERING DETECTED!" : "PASS"}`,
+    `  • Lint / Static Analysis: ${checkLabel(results.lintStatus)}`,
     "",
     "TIER 2: ACCEPTANCE CRITERIA EVIDENCE AUDIT",
   ];

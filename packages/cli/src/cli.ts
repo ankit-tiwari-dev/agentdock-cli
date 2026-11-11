@@ -93,11 +93,9 @@ export async function runCli(args: string[]): Promise<number> {
       return 0;
     }
 
-    case "verify": {
-      const output = handleVerifyCommand();
-      console.log(output);
-      return 0;
-    }
+    case "verify":
+      // Exits 0 only when the report is PASSED.
+      return print(handleVerifyCommand());
 
     case "explain": {
       const output = handleExplainCommand();
@@ -111,30 +109,37 @@ export async function runCli(args: string[]): Promise<number> {
       return 0;
     }
 
-    case "coach": {
-      const output = handleCoachCommand(subArgs);
-      console.log(output);
-      return 0;
-    }
+    case "coach":
+      return print(handleCoachCommand(subArgs));
 
-    case "backtrace": {
-      const output = handleBacktraceCommand(subArgs[0]);
-      console.log(output);
-      return 0;
-    }
+    case "backtrace":
+      return print(handleBacktraceCommand(subArgs[0]));
 
-    case "commit": {
-      const output = handleCommitCommand(subArgs);
-      console.log(output);
-      return 0;
-    }
+    case "commit":
+      return print(handleCommitCommand(subArgs));
 
     case "cost": {
       const model = subArgs[0] || "claude-3-5-sonnet";
-      const input = parseInt(subArgs[1] || "1000", 10);
-      const output = parseInt(subArgs[2] || "500", 10);
-      const breakdown = calculateTurnCost({ modelName: model, inputTokens: input, outputTokens: output });
+      const inputArg = subArgs[1] ?? "1000";
+      const outputArg = subArgs[2] ?? "500";
+      // Whole token counts only: parseInt would read "1e6" as 1 and "abc" as NaN.
+      if (!/^\d+$/.test(inputArg) || !/^\d+$/.test(outputArg)) {
+        console.log(
+          "Usage: ctrlplane cost <model> <input-tokens> <output-tokens>  (token counts are whole numbers, e.g. 1000000)",
+        );
+        return 1;
+      }
+      const breakdown = calculateTurnCost({
+        modelName: model,
+        inputTokens: Number(inputArg),
+        outputTokens: Number(outputArg),
+      });
       console.log(`Estimated Cost (${breakdown.model}): ${breakdown.formattedCost} (${breakdown.totalTokens} tokens)`);
+      if (breakdown.unknownModel) {
+        console.log(
+          `WARNING: unknown model '${breakdown.model}': no price in the catalog, estimated at the default rate.`,
+        );
+      }
       return 0;
     }
 

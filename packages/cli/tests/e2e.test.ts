@@ -76,13 +76,16 @@ new file mode 100644
 +}
 `;
 
-    const verifyOutput = handleVerifyCommand({
+    const verify = handleVerifyCommand({
       projectPath: tmpProject,
       diffUnified: diff,
     });
+    const verifyOutput = verify.output;
 
     assert.ok(verifyOutput.includes("CTRLPLANE VERIFICATION REPORT"));
     assert.ok(verifyOutput.includes("TIER 1: DETERMINISTIC SYSTEM CHECKS"));
+    // No test, typecheck or lint command was given, so the run is not verified.
+    assert.equal(verify.exitCode, 1);
 
     // 7. Run Delta Explanation
     const explainOutput = handleExplainCommand({

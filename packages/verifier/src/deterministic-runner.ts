@@ -1,21 +1,17 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import type { DeterministicResults } from "../../core/src/index.ts";
+import type { CheckStatus, DeterministicResults } from "../../core/src/index.ts";
 import { parseUnifiedDiff, analyzeTestDiff } from "../../git-analyzer/src/index.ts";
 
 export interface DeterministicRunOptions {
   projectPath: string;
   testCommand?: string;
   typecheckCommand?: string;
+  lintCommand?: string;
   diffUnified?: string;
 }
 
 export function runDeterministicChecks(options: DeterministicRunOptions): DeterministicResults {
   const logs: Record<string, string> = {};
-  let testSuitePassed = true;
-  let typecheckPassed = true;
-  const lintPassed = true;
   let testTamperDetected = false;
   let failedAssertionCount = 0;
 
@@ -32,44 +28,31 @@ export function runDeterministicChecks(options: DeterministicRunOptions): Determ
     }
   }
 
-  // 2. Run Test Suite if configured or package.json has test script
-  const testCmd = options.testCommand ?? getProjectTestCommand(options.projectPath);
-  if (testCmd) {
-    const result = runShellCommand(testCmd, options.projectPath);
-    logs.test_run = result.output;
-    if (result.status !== 0) {
-      testSuitePassed = false;
-      failedAssertionCount++;
-    }
-  }
-
-  // 3. Run Typecheck if configured or tsconfig exists
-  const typecheckCmd = options.typecheckCommand;
-  if (typecheckCmd) {
-    const result = runShellCommand(typecheckCmd, options.projectPath);
-    logs.typecheck = result.output;
-    if (result.status !== 0) {
-      typecheckPassed = false;
-    }
-  }
+  // 2-4. Test suite, typecheck and lint run only when their command is given.
+  // Without a command a check is NOT_RUN, which never counts as a pass.
+  const testSuiteStatus = runCheck(options.testCommand, options.projectPath, logs, "test_run");
+  if (testSuiteStatus === "FAIL") failedAssertionCount++;
+  const typecheckStatus = runCheck(options.typecheckCommand, options.projectPath, logs, "typecheck");
+  const lintStatus = runCheck(options.lintCommand, options.projectPath, logs, "lint");
 
   return {
-    typecheckPassed,
-    testSuitePassed: testSuitePassed && !testTamperDetected,
+    typecheckPassed: typecheckStatus === "PASS",
+    testSuitePassed: testSuiteStatus === "PASS" && !testTamperDetected,
     testTamperDetected,
-    lintPassed,
+    lintPassed: lintStatus === "PASS",
+    typecheckStatus,
+    testSuiteStatus,
+    lintStatus,
     failedAssertionCount,
     rawLogs: logs,
   };
 }
 
-function getProjectTestCommand(projectPath: string): string | undefined {
-  const pkgPath = join(projectPath, "package.json");
-  if (existsSync(pkgPath)) {
-    // If package.json exists, we can run test
-    return undefined; // Keep optional unless explicitly configured in tests
-  }
-  return undefined;
+function runCheck(command: string | undefined, cwd: string, logs: Record<string, string>, logKey: string): CheckStatus {
+  if (!command) return "NOT_RUN";
+  const result = runShellCommand(command, cwd);
+  logs[logKey] = result.output;
+  return result.status === 0 ? "PASS" : "FAIL";
 }
 
 function runShellCommand(command: string, cwd: string): { status: number; output: string } {

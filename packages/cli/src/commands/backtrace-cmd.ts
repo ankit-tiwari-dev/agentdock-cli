@@ -1,16 +1,50 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { findLocalClaudeTranscripts, parseClaudeTranscript } from "../../../agent-adapters/src/backtracer.ts";
+import type { CommandResult } from "./policies-cmd.ts";
 
-export function handleBacktraceCommand(targetPath?: string): string {
-  if (targetPath && existsSync(targetPath)) {
+type Session = ReturnType<typeof parseClaudeTranscript>;
+
+function mtimeOf(path: string): number {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/** Models in a session with no catalog price; their spend is only an estimate at the default rate. */
+function unknownModels(session: Session): string[] {
+  return [...new Set(session.turns.filter((t) => t.cost.unknownModel).map((t) => t.cost.model))];
+}
+
+function unknownModelWarnings(session: Session): string[] {
+  return unknownModels(session).map(
+    (m) => `WARNING: unknown model '${m}': no price in the catalog, spend is estimated at the default rate.`,
+  );
+}
+
+export function handleBacktraceCommand(targetPath?: string): CommandResult {
+  if (targetPath) {
+    // A path that was given but does not exist is an error, not a reason to list other transcripts.
+    if (!existsSync(targetPath)) {
+      return { output: `Transcript not found: ${targetPath}`, exitCode: 1 };
+    }
     const raw = readFileSync(targetPath, "utf-8");
     const session = parseClaudeTranscript(raw, targetPath);
-    return formatBacktraceSession(session);
+    return { output: formatBacktraceSession(session), exitCode: 0 };
   }
 
-  const transcripts = findLocalClaudeTranscripts();
+  // Newest first, so the session that just finished is at the top.
+  const transcripts = findLocalClaudeTranscripts()
+    .map((path) => ({ path, mtime: mtimeOf(path) }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((t) => t.path);
   if (transcripts.length === 0) {
-    return "No local agent transcripts found in ~/.claude/projects/. Pass a direct transcript path: `ctrlplane backtrace <path.jsonl>`";
+    return {
+      output:
+        "No local agent transcripts found in ~/.claude/projects/. Pass a direct transcript path: `ctrlplane backtrace <path.jsonl>`",
+      exitCode: 0,
+    };
   }
 
   const lines = [`Found ${transcripts.length} local agent transcript(s):`, ""];
@@ -23,15 +57,16 @@ export function handleBacktraceCommand(targetPath?: string): string {
       lines.push(
         `  Turns: ${session.totalTurns} | Total Tokens: ${session.totalTokens} | Spend: $${session.totalCostUsd.toFixed(4)}`,
       );
+      lines.push(...unknownModelWarnings(session).map((w) => `  ${w}`));
     } catch {
       lines.push(`• ${path} (unreadable)`);
     }
   }
 
-  return lines.join("\n");
+  return { output: lines.join("\n"), exitCode: 0 };
 }
 
-function formatBacktraceSession(session: ReturnType<typeof parseClaudeTranscript>): string {
+function formatBacktraceSession(session: Session): string {
   const lines = [
     `=== AgentDock Backtrace Recovery ===`,
     `Session:      ${session.sessionId}`,
@@ -39,6 +74,7 @@ function formatBacktraceSession(session: ReturnType<typeof parseClaudeTranscript
     `Total Turns:  ${session.totalTurns}`,
     `Total Tokens: ${session.totalTokens}`,
     `Total Spend:  $${session.totalCostUsd.toFixed(4)}`,
+    ...unknownModelWarnings(session),
     "",
     "Turn Breakdown:",
   ];

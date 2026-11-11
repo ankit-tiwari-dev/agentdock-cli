@@ -18,14 +18,20 @@ export function isAgentSettingsFile(filePath: string): boolean {
 }
 
 export function isTestFile(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/").toLowerCase();
+  const slashed = filePath.replace(/\\/g, "/");
+  const normalized = slashed.toLowerCase();
+  const base = slashed.slice(slashed.lastIndexOf("/") + 1);
   return (
-    normalized.includes("/tests/") ||
-    normalized.includes("/__tests__/") ||
+    // A test folder at any depth, including the top level: tests/, test/, __tests__/.
+    /(^|\/)(tests?|__tests__)\//.test(normalized) ||
     /\.(test|spec)\.[a-zA-Z0-9]+$/.test(normalized) ||
+    // Go and pytest: *_test.go, *_test.py.
     /_test\.[a-zA-Z0-9]+$/.test(normalized) ||
     normalized.endsWith("test.py") ||
-    normalized.endsWith("_test.go")
+    // pytest: test_*.py
+    /^test_.*\.py$/i.test(base) ||
+    // JUnit: FooTest.java, FooTests.java (case-sensitive, so Contest.java is not a test).
+    /Tests?\.java$/.test(base)
   );
 }
 

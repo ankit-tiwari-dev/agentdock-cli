@@ -61,24 +61,28 @@ export const MODEL_PRICING_CATALOG: Record<string, ModelPricing> = {
 const PROVIDER_PREFIXES = ["anthropic/", "google/", "openai/"];
 
 export function normalizeModelName(modelName: string): string {
-  const lowered = modelName.trim().toLowerCase();
+  let lowered = modelName.trim().toLowerCase();
   for (const prefix of PROVIDER_PREFIXES) {
     if (lowered.startsWith(prefix)) {
-      return lowered.slice(prefix.length);
+      lowered = lowered.slice(prefix.length);
+      break;
     }
   }
-  return lowered;
+  return (
+    lowered
+      // Bedrock: `us.anthropic.claude-opus-4-5-20251101-v1:0` (optional region, vendor, version suffix).
+      .replace(/^(?:[a-z-]+\.)?anthropic\./, "")
+      .replace(/-v\d+:\d+$/, "")
+      // Vertex: `claude-opus-4-5@20251101`.
+      .replace(/@.*$/, "")
+  );
 }
 
-export function getModelPricing(modelName?: string): ModelPricing {
-  if (!modelName) {
-    return DEFAULT_MODEL_PRICING;
-  }
+/** The catalog id a model name prices as, or undefined when the model is not in the catalog. */
+export function resolveModelId(modelName?: string): string | undefined {
+  if (!modelName) return undefined;
   const name = normalizeModelName(modelName);
-  const exact = MODEL_PRICING_CATALOG[name];
-  if (exact) {
-    return exact;
-  }
+  if (MODEL_PRICING_CATALOG[name]) return name;
 
   let bestKey = "";
   for (const key of Object.keys(MODEL_PRICING_CATALOG)) {
@@ -86,7 +90,13 @@ export function getModelPricing(modelName?: string): ModelPricing {
       bestKey = key;
     }
   }
-  return bestKey ? MODEL_PRICING_CATALOG[bestKey] : DEFAULT_MODEL_PRICING;
+  return bestKey || undefined;
+}
+
+/** Catalog price for a model. An unknown model gets DEFAULT_MODEL_PRICING; use resolveModelId to tell. */
+export function getModelPricing(modelName?: string): ModelPricing {
+  const id = resolveModelId(modelName);
+  return id ? MODEL_PRICING_CATALOG[id] : DEFAULT_MODEL_PRICING;
 }
 
 export interface CostCalculationParams {
@@ -106,6 +116,8 @@ export interface CostBreakdown {
   totalTokens: number;
   costUsd: number;
   formattedCost: string;
+  /** True when the model is not in the catalog, so costUsd is only an estimate at the default rate. */
+  unknownModel?: boolean;
 }
 
 function nonNegative(value: number | undefined): number {
@@ -136,6 +148,7 @@ export function calculateTurnCost(params: CostCalculationParams): CostBreakdown 
     totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
     costUsd,
     formattedCost: formatCostUsd(costUsd),
+    unknownModel: resolveModelId(model) === undefined,
   };
 }
 

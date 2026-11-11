@@ -113,3 +113,40 @@ test("hygiene - files stored with CRLF in the index are reported", () => {
     ["bad.ts", "mixed.ts"],
   );
 });
+
+test("regression: hygiene - a flow-style `- { uses: ... }` step must be pinned too", () => {
+  const workflow = [
+    "steps:",
+    "  - { uses: actions/checkout@v4 }",
+    "  - { name: Setup, uses: 'actions/setup-node@v7', with: { node-version: 24 } }",
+    `  - { uses: actions/checkout@${SHA} }`,
+  ].join("\n");
+  assert.deepEqual(
+    findUnpinnedActions("ci.yml", workflow).map((f) => f.detail),
+    ["actions/checkout@v4 is not pinned to a commit SHA", "actions/setup-node@v7 is not pinned to a commit SHA"],
+  );
+});
+
+test("regression: hygiene - an empty *.test.ts file does not count as a test", () => {
+  const contents: Record<string, string> = {
+    "core/core.test.ts": 'test("works", () => {});',
+    "vitest/a.test.ts": 'it("works", () => {});',
+    "suite/a.test.ts": 'describe("x", () => {});',
+    "empty/empty.test.ts": "",
+    "comment/c.test.ts": "// tests go here later\n",
+  };
+  const findings = findPackagesWithoutTests(
+    [
+      { name: "core", testFiles: ["core.test.ts"] },
+      { name: "vitest", testFiles: ["a.test.ts"] },
+      { name: "suite", testFiles: ["a.test.ts"] },
+      { name: "empty", testFiles: ["empty.test.ts"] },
+      { name: "comment", testFiles: ["c.test.ts"] },
+    ],
+    (pkg, file) => contents[`${pkg}/${file}`] ?? "",
+  );
+  assert.deepEqual(
+    findings.map((f) => f.file),
+    ["packages/empty", "packages/comment"],
+  );
+});

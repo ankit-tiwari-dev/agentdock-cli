@@ -1,4 +1,4 @@
-import type { FileDiff } from "./diff-parser.ts";
+import { fileDiffPath, type FileDiff } from "./diff-parser.ts";
 import { isTestFile } from "./classifier.ts";
 
 export interface TestTamperAnalysis {
@@ -21,14 +21,28 @@ const ASSERTION_PATTERNS = [
   /\bassertTrue\s*\(/i,
   /\bself\.assertEqual\s*\(/i,
   /\bself\.assertTrue\s*\(/i,
+  // A matcher on its own line of a chained assertion: `.toBe(4)`, `.not.toEqual(x)`.
+  /^\.(?:not\.)?(?:to\w*|resolves|rejects)\b/,
+];
+
+/** Added lines that switch tests off or skip their assertions. */
+const DISABLING_PATTERNS = [
+  // describe.skip( / it.only( / test.skip( ...
+  /(?<![.\w])(?:describe|context|suite|it|test|specify)\.(?:skip|only)\b/,
+  // Jasmine/Mocha/Jest x- and f- prefixes (not a method call such as `model.fit(`).
+  /(?<![.\w])(?:xit|xdescribe|xtest|xcontext|fit|fdescribe)\s*\(/,
+  // A bare early return.
+  /^return\s*;?$/,
+  // A block comment that opens here and does not close on the same line (not a `src/**/*.ts` glob).
+  /(^|[\s;{}])\/\*(?![\s\S]*\*\/)/,
 ];
 
 /**
  * Analyzes a file diff to detect whether existing test assertions were weakened or removed
  */
 export function analyzeTestDiff(diff: FileDiff): TestTamperAnalysis {
-  const filePath = diff.newPath || diff.oldPath;
-  const isTest = isTestFile(filePath);
+  const filePath = fileDiffPath(diff);
+  const isTest = isTestFile(filePath) || (diff.isRenamed === true && isTestFile(diff.oldPath));
 
   if (!isTest) {
     return {
@@ -68,8 +82,19 @@ export function analyzeTestDiff(diff: FileDiff): TestTamperAnalysis {
   // Inspect existing test file modifications
   const tamperedSnippets: string[] = [];
 
+  // Renaming a test file to a non-test name hides it from the test runner.
+  if (diff.isRenamed && isTestFile(diff.oldPath) && !isTestFile(diff.newPath)) {
+    tamperedSnippets.push(`RENAMED_TO_NON_TEST: ${diff.oldPath} -> ${diff.newPath}`);
+  }
+
   for (const hunk of diff.hunks) {
     for (const line of hunk.lines) {
+      if (line.type === "add") {
+        const trimmed = line.content.trim();
+        if (DISABLING_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+          tamperedSnippets.push(trimmed);
+        }
+      }
       if (line.type === "delete") {
         const trimmed = line.content.trim();
         // Ignore empty lines or comment-only deletion
@@ -94,7 +119,7 @@ export function analyzeTestDiff(diff: FileDiff): TestTamperAnalysis {
     tamperedAssertionsCount: tamperedSnippets.length,
     tamperedSnippets,
     explanation: isTampering
-      ? `Anti-Test-Gaming Guard: Detected ${tamperedSnippets.length} deleted or weakened test assertion(s) in existing test file '${filePath}'. Coding agents must fix bugs in source code, not weaken tests.`
+      ? `Anti-Test-Gaming Guard: Detected ${tamperedSnippets.length} deleted, weakened or disabled test assertion(s) in existing test file '${filePath}'. Coding agents must fix bugs in source code, not weaken tests.`
       : "Existing test file modified without weakening assertions.",
   };
 }
