@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseSpecificationMarkdown, SpecManager } from "../src/index.ts";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 test("Specification parser extracts frontmatter, plan, and criteria", () => {
   const md = `---
@@ -45,7 +47,7 @@ Implement JWT token authentication with rotation.
 });
 
 test("SpecManager creates template and records approvals", () => {
-  const tmpDir = "./tmp-test-spec";
+  const tmpDir = mkdtempSync(join(tmpdir(), "ctrlplane-spec-"));
   const manager = new SpecManager(tmpDir);
 
   // 1. Initialize

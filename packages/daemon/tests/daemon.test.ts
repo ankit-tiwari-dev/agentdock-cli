@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { createConnection } from "node:net";
 import { SupervisorDaemon, type IPCEndpoint } from "../src/index.ts";
 import { createSession } from "../../core/src/index.ts";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function sendIPCMessage(endpoint: IPCEndpoint, payload: object): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -31,17 +33,22 @@ function sendIPCMessage(endpoint: IPCEndpoint, payload: object): Promise<any> {
     client.on("error", (err) => {
       reject(err);
     });
+    client.setTimeout(5000, () => {
+      client.destroy();
+      reject(new Error("daemon did not answer within 5s"));
+    });
   });
 }
 
 test("SupervisorDaemon starts, serves IPC, and enforces policy", async () => {
-  const testProjectDir = "./tmp-test-project";
+  const testProjectDir = mkdtempSync(join(tmpdir(), "ctrlplane-daemon-"));
   const daemon = new SupervisorDaemon({
     projectPath: testProjectDir,
     dbPath: ":memory:",
   });
 
   const endpoint = await daemon.start();
+  try {
   assert.ok(endpoint.path || endpoint.port);
 
   // Seed active session in storage
@@ -62,7 +69,8 @@ test("SupervisorDaemon starts, serves IPC, and enforces policy", async () => {
 
   assert.equal(safeRes.decision, "ALLOW");
   assert.equal(safeRes.exitCode, 0);
-  assert.ok(safeRes.latencyMs < 15);
+  // A loose bound: CI runners are shared and slow; the engine's own speed is covered by the policy-engine perf test.
+  assert.ok(safeRes.latencyMs < 250, `latency ${safeRes.latencyMs}ms`);
 
   // 2. Dangerous tool call -> DENY (Exit 2)
   const dangerRes = await sendIPCMessage(endpoint, {
@@ -80,8 +88,9 @@ test("SupervisorDaemon starts, serves IPC, and enforces policy", async () => {
   // Verify events persisted to storage
   const events = daemon.getStorage().listEventsForSession(session.id);
   assert.equal(events.length, 2);
-
-  // Cleanup
-  await daemon.stop();
-  rmSync(testProjectDir, { recursive: true, force: true });
+  } finally {
+    // A failed assertion must still close the IPC server, or the test process never exits.
+    await daemon.stop();
+    rmSync(testProjectDir, { recursive: true, force: true });
+  }
 });

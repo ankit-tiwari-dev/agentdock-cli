@@ -7,7 +7,8 @@ import {
   injectOpenCodePlugin,
   removeClaudeHooks,
 } from "../src/index.ts";
-import { rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { rmSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 test("HookClient fails open in dev mode when daemon is not running", async () => {
@@ -43,7 +44,7 @@ test("HookClient fails close in CI mode when daemon is not running", async () =>
 });
 
 test("ClaudeAdapter writes Claude Code's real hook shape into settings.local.json and merges non-destructively", () => {
-  const tmpDir = "./tmp-test-claude";
+  const tmpDir = mkdtempSync(join(tmpdir(), "ctrlplane-claude-"));
   rmSync(tmpDir, { recursive: true, force: true });
   const claudeDir = join(tmpDir, ".claude");
   mkdirSync(claudeDir, { recursive: true });
@@ -91,7 +92,7 @@ test("ClaudeAdapter writes Claude Code's real hook shape into settings.local.jso
 });
 
 test("Codex hooks use the grouped shape and OpenCode gets a real plugin file", () => {
-  const tmpDir = "./tmp-test-agents";
+  const tmpDir = mkdtempSync(join(tmpdir(), "ctrlplane-agents-"));
   rmSync(tmpDir, { recursive: true, force: true });
 
   const codexRes = injectCodexHooks(tmpDir, "ctrlplane hook");

@@ -8,11 +8,9 @@ export const BLOB_THRESHOLD_BYTES = 64 * 1024; // 64 KB
 export class BlobStore {
   private baseDir: string;
 
+  /** The folder is created on the first write, so opening a store never leaves an empty folder behind. */
   constructor(baseDir: string) {
     this.baseDir = baseDir;
-    if (!existsSync(this.baseDir)) {
-      mkdirSync(this.baseDir, { recursive: true });
-    }
   }
 
   /**
@@ -30,6 +28,7 @@ export class BlobStore {
 
     const filePath = join(this.baseDir, `${sha256}.gz`);
     if (!existsSync(filePath)) {
+      mkdirSync(this.baseDir, { recursive: true });
       writeFileSync(filePath, compressed);
     }
 

@@ -7,12 +7,12 @@ import { handleExplainCommand } from "../src/commands/explain-cmd.ts";
 import { handleAuditCommand } from "../src/commands/audit-cmd.ts";
 import { SupervisorDaemon } from "../../daemon/src/index.ts";
 import { dispatchHook } from "../../agent-adapters/src/index.ts";
-import { rmSync, existsSync, readFileSync } from "node:fs";
+import { rmSync, existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 test("FULL E2E INTEGRATION: Init -> Spec -> Supervise -> Block Tamper -> Verify -> Audit", async () => {
-  const tmpProject = "./tmp-e2e-project";
-  rmSync(tmpProject, { recursive: true, force: true });
+  const tmpProject = mkdtempSync(join(tmpdir(), "ctrlplane-e2e-"));
 
   try {
     // 1. Initialize project

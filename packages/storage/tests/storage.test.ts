@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { redactSecrets, redactObject, StorageEngine, BlobStore } from "../src/index.ts";
 import { createSession, createAuditEvent } from "../../core/src/index.ts";
-import { rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 test("Redaction engine identifies and scrubs known secret tokens", () => {
   const dirty = `
@@ -23,7 +25,7 @@ test("Redaction engine identifies and scrubs known secret tokens", () => {
 });
 
 test("BlobStore compresses large payloads and retrieves faithfully", () => {
-  const tmpDir = "./tmp-test-blobs";
+  const tmpDir = join(mkdtempSync(join(tmpdir(), "ctrlplane-blobs-test-")), "blobs");
   const blobStore = new BlobStore(tmpDir);
 
   const payload = "A".repeat(128 * 1024); // 128 KB
@@ -36,6 +38,20 @@ test("BlobStore compresses large payloads and retrieves faithfully", () => {
   assert.equal(retrieved, payload);
 
   rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test("regression: an in-memory store writes nothing into the current folder", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "ctrlplane-cwd-"));
+  const previous = process.cwd();
+  process.chdir(cwd);
+  try {
+    const engine = new StorageEngine(":memory:");
+    engine.close();
+    assert.deepEqual(readdirSync(cwd), []);
+  } finally {
+    process.chdir(previous);
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });
 
 test("StorageEngine manages sessions, events with auto-redaction", () => {

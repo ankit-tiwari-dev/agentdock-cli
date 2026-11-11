@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
   Session,
@@ -25,8 +26,9 @@ export class StorageEngine {
     }
 
     this.db = new DatabaseSync(dbPath);
+    // An in-memory store must not write into whatever folder the process happens to run in.
     const resolvedBlobDir =
-      blobDir ?? (dbPath === ":memory:" ? "./.ctrlplane/blobs" : join(dirname(dbPath), "blobs"));
+      blobDir ?? (dbPath === ":memory:" ? join(tmpdir(), `ctrlplane-blobs-${process.pid}`) : join(dirname(dbPath), "blobs"));
     this.blobStore = new BlobStore(resolvedBlobDir);
 
     this.initPragmas();
