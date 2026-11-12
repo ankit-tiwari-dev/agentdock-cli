@@ -361,3 +361,15 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 
 - **Symptoms:** the `known vulnerabilities (OSV)` job failed before scanning with `osv-scanner/v2@v2.7.0 requires go >= 1.27.0 (running go 1.26.10)`.
 - **Fix:** every workflow job installs Go 1.27.
+
+## I-54 · FIXED · The audit log does not record which rule decided a tool call
+
+- **Symptoms:** a blocked tool call's row in `audit.db` holds the verdict and the rule's message, but not the rule's ID. Anything reading the log (the dashboard, a query) cannot group or filter decisions by rule.
+- **Root cause:** the daemon computes `matchedRuleId` for its reply (`packages/daemon/src/supervisor-daemon.ts`), but the `events` table has no column for it and `StorageEngine.insertEvent` does not take one (`packages/storage/src/db.ts`).
+- **Fix:** `events` has a `rule_id` column, `AuditEvent` has `ruleId`, and the daemon stores the matched rule (for an observe-mode hit, the rule that would have fired). A database made by an earlier version gets the column on open (`upgradeSchema`); its old rows keep NULL.
+- **Verification:** `regression: a stored event records the rule that decided it` (`packages/daemon/tests/regressions.test.ts`; old code: `actual undefined, expected 'RULE-BLOCK-DESTRUCTIVE-SHELL'`) and `regression: an audit.db made before rule IDs were stored is upgraded on open and keeps its rows` (`packages/storage/tests/storage.test.ts`; old code stored `undefined` instead of `'RULE-X'`).
+
+## I-55 · IN PROGRESS · Hook calls made while the daemon is stopped are not recorded
+
+- **Symptoms:** with no daemon running, the hook still allows and denies tool calls from the local rules, but nothing is written to `audit.db`, so those calls are missing from `ctrlplane audit` and from the dashboard.
+- **Root cause:** only the daemon writes events. The hook's no-daemon path (`evaluateLocally` in `packages/cli/src/commands/hook-cmd.ts`) returns the verdict without recording it.

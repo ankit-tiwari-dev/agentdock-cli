@@ -23,6 +23,8 @@ export interface AuditEvent {
   isBlobStored?: boolean;
   policyVerdict?: PolicyAction;
   policyReason?: string;
+  /** The rule that decided this call, or for an observe-mode hit the rule that would have. */
+  ruleId?: string;
   executionDurationMs?: number;
   modelName?: string;
   tokensInput?: number;

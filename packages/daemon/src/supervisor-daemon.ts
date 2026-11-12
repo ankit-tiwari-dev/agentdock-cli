@@ -323,6 +323,7 @@ export class SupervisorDaemon {
         toolOutput: payload.toolResponse,
         policyVerdict: policyResult.decision,
         policyReason: reason,
+        ruleId: policyResult.matchedRuleId ?? policyResult.observed?.[0]?.ruleId,
         executionDurationMs: Math.round(performance.now() - startTime),
         createdAt,
       });

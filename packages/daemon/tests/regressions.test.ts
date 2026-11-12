@@ -79,3 +79,19 @@ test("regression: repeated identical failures in PostToolUse trip the loop break
   });
   assert.equal(other.decision, "ALLOW");
 });
+
+test("regression: a stored event records the rule that decided it", () => {
+  const dir = project();
+  const daemon = new SupervisorDaemon({ projectPath: dir, dbPath: ":memory:" });
+  const verdict = daemon.handleHookPayload({
+    hookEventName: "PreToolUse",
+    sessionId: "r",
+    cwd: dir,
+    toolName: "Bash",
+    toolInput: { command: "rm -rf ~" },
+  });
+  assert.equal(verdict.decision, "DENY");
+  assert.ok(verdict.matchedRuleId, "the daemon names the rule in its reply");
+  const [event] = daemon.getStorage().listEventsForSession("r");
+  assert.equal(event.ruleId, verdict.matchedRuleId);
+});
