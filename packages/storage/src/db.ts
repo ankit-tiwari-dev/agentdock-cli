@@ -29,6 +29,7 @@ export class StorageEngine {
 
     this.initPragmas();
     this.initSchema();
+    this.upgradeSchema();
   }
 
   private initPragmas(): void {
@@ -40,6 +41,22 @@ export class StorageEngine {
       } catch {
         // Memory DB, unsupported pragma or a locked database: keep the defaults for this one.
       }
+    }
+  }
+
+  /**
+   * Adds columns that newer versions write to a database an older version created. `CREATE TABLE IF NOT EXISTS`
+   * leaves an existing table as it is, so each new column is added here. Old rows keep NULL in it.
+   */
+  private upgradeSchema(): void {
+    const columns = new Set(
+      (this.db.prepare("PRAGMA table_info(events)").all() as { name: string }[]).map((c) => c.name),
+    );
+    if (columns.has("rule_id")) return;
+    try {
+      this.db.exec("ALTER TABLE events ADD COLUMN rule_id TEXT;");
+    } catch {
+      // Another process (the daemon or a hook) added it first, or the database is read-only: both are fine.
     }
   }
 
@@ -86,7 +103,8 @@ export class StorageEngine {
         policy_verdict TEXT,
         policy_reason TEXT,
         execution_duration_ms INTEGER,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        rule_id TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, sequence_num);
@@ -280,8 +298,8 @@ export class StorageEngine {
       INSERT INTO events (
         id, session_id, sequence_num, event_type, tool_name,
         tool_input_json, tool_output_json, is_blob_stored,
-        policy_verdict, policy_reason, execution_duration_ms, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        policy_verdict, policy_reason, execution_duration_ms, created_at, rule_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -298,7 +316,29 @@ export class StorageEngine {
       event.policyReason ? redactSecrets(event.policyReason).sanitized : null,
       event.executionDurationMs ?? null,
       event.createdAt,
+      event.ruleId ?? null,
     );
+  }
+
+  /**
+   * Inserts an event with the session's next sequence number, for writers that keep no counter of their own
+   * (hook processes). Reading the last number and inserting happen in one write transaction, so two processes
+   * appending at the same moment cannot take the same number. Returns the number used.
+   */
+  public appendEvent(
+    event: Omit<AuditEvent, "id" | "sequenceNum">,
+    makeId: (sessionId: string, sequenceNum: number, createdAt: number) => string,
+  ): number {
+    this.db.exec("BEGIN IMMEDIATE;");
+    try {
+      const sequenceNum = this.lastSequenceNum(event.sessionId) + 1;
+      this.insertEvent({ ...event, id: makeId(event.sessionId, sequenceNum, event.createdAt), sequenceNum });
+      this.db.exec("COMMIT;");
+      return sequenceNum;
+    } catch (err) {
+      this.db.exec("ROLLBACK;");
+      throw err;
+    }
   }
 
   public listEventsForSession(sessionId: string): AuditEvent[] {
@@ -333,6 +373,7 @@ export class StorageEngine {
         policyVerdict: r.policy_verdict as AuditEvent["policyVerdict"],
         policyReason: r.policy_reason ? String(r.policy_reason) : undefined,
         executionDurationMs: r.execution_duration_ms ? Number(r.execution_duration_ms) : undefined,
+        ruleId: r.rule_id ? String(r.rule_id) : undefined,
         createdAt: Number(r.created_at),
       };
     });

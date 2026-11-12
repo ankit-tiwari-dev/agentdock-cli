@@ -9,7 +9,6 @@ import {
   type AgentType,
   type DaemonStatus,
   type EventType,
-  type HookEventName,
   type HookVerdictResponse,
   type PolicyAction,
 } from "../../core/src/index.ts";
@@ -26,6 +25,7 @@ import {
 import { ContextRecorder, type RecorderOptions } from "../../context/src/recorder.ts";
 import { IPCServer, type IPCEndpoint } from "./ipc-server.ts";
 import { findProjectRoot } from "./lock.ts";
+import { DEFAULT_SESSION, auditEventFor, auditEventId, describeOutcome } from "./audit-record.ts";
 
 export {
   DAEMON_UNAVAILABLE,
@@ -65,20 +65,6 @@ export interface DaemonEventNotice {
   observedOnly: boolean;
   createdAt: number;
 }
-
-const EVENT_TYPE: Record<HookEventName, EventType> = {
-  PreToolUse: "pre_tool",
-  PostToolUse: "post_tool",
-  UserPromptSubmit: "user_prompt",
-  Stop: "stop",
-  SubagentStop: "subagent_stop",
-  SessionStart: "session_start",
-  SessionEnd: "session_end",
-  PreCompact: "pre_compact",
-  Notification: "notification",
-};
-
-const DEFAULT_SESSION = "sess_default";
 
 export class SupervisorDaemon {
   private config: DaemonConfig;
@@ -304,28 +290,14 @@ export class SupervisorDaemon {
     });
 
     const exitCode: 0 | 2 = policyResult.decision === "DENY" ? 2 : 0;
-    const observedOnly = policyResult.decision === "ALLOW" && !!policyResult.observed?.length;
-    const reason = observedOnly
-      ? `Observe mode: would ${policyResult.observed![0].wouldDecide} — ${policyResult.observed![0].reason}`
-      : policyResult.reason;
+    const { observedOnly, reason, ruleId } = describeOutcome(policyResult);
 
-    const eventType = EVENT_TYPE[payload.hookEventName] ?? "notification";
     const sequenceNum = this.nextSequence(sessionId);
     const createdAt = Date.now();
+    const row = auditEventFor(payload, sessionId, policyResult, Math.round(performance.now() - startTime), createdAt);
+    const eventType = row.eventType;
     try {
-      this.storage.insertEvent({
-        id: `evt_${sessionId}_${sequenceNum}_${createdAt}`,
-        sessionId,
-        sequenceNum,
-        eventType,
-        toolName: payload.toolName,
-        toolInput: payload.toolInput ?? (payload.prompt !== undefined ? { prompt: payload.prompt } : undefined),
-        toolOutput: payload.toolResponse,
-        policyVerdict: policyResult.decision,
-        policyReason: reason,
-        executionDurationMs: Math.round(performance.now() - startTime),
-        createdAt,
-      });
+      this.storage.insertEvent({ ...row, id: auditEventId(sessionId, sequenceNum, createdAt), sequenceNum });
     } catch {
       // Storage problems must never block the agent loop.
     }
@@ -344,7 +316,7 @@ export class SupervisorDaemon {
         toolName: payload.toolName,
         decision: policyResult.decision,
         reason,
-        matchedRuleId: policyResult.matchedRuleId ?? policyResult.observed?.[0]?.ruleId,
+        matchedRuleId: ruleId,
         observedOnly,
         createdAt,
       });

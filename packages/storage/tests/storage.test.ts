@@ -220,3 +220,45 @@ test("an in-memory store creates one blob folder, on its first large write", () 
     }
   });
 });
+
+test("regression: an audit.db made before rule IDs were stored is upgraded on open and keeps its rows", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ctrlplane-oldschema-"));
+  const dbPath = join(dir, "audit.db");
+  try {
+    // The events table exactly as earlier versions created it: no rule_id column.
+    const old = new DatabaseSync(dbPath);
+    old.exec(`
+      CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_type TEXT NOT NULL, project_path TEXT NOT NULL,
+        git_branch TEXT NOT NULL, base_commit_sha TEXT NOT NULL, head_commit_sha TEXT, spec_id TEXT,
+        status TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, metadata_json TEXT);
+      CREATE TABLE events (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        sequence_num INTEGER NOT NULL, event_type TEXT NOT NULL, tool_name TEXT, tool_input_json TEXT,
+        tool_output_json TEXT, is_blob_stored INTEGER NOT NULL DEFAULT 0, policy_verdict TEXT, policy_reason TEXT,
+        execution_duration_ms INTEGER, created_at INTEGER NOT NULL);
+      INSERT INTO sessions VALUES ('s', 'claude-code', '/p', 'main', 'abc', NULL, NULL, 'active', 1, NULL, NULL);
+      INSERT INTO events VALUES ('old', 's', 1, 'pre_tool', 'Bash', NULL, NULL, 0, 'DENY', 'blocked', 3, 2);`);
+    old.close();
+
+    const storage = new StorageEngine(dbPath);
+    let events;
+    try {
+      storage.insertEvent({
+        ...createAuditEvent({ sessionId: "s", sequenceNum: 2, eventType: "pre_tool" }),
+        policyVerdict: "DENY",
+        ruleId: "RULE-X",
+      });
+      events = storage.listEventsForSession("s");
+    } finally {
+      storage.close();
+    }
+    assert.deepEqual(
+      events.map((e) => [e.id, e.ruleId]),
+      [
+        ["old", undefined],
+        [events[1].id, "RULE-X"],
+      ],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

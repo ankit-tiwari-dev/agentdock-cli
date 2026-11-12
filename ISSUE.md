@@ -361,3 +361,18 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 
 - **Symptoms:** the `known vulnerabilities (OSV)` job failed before scanning with `osv-scanner/v2@v2.7.0 requires go >= 1.27.0 (running go 1.26.10)`.
 - **Fix:** every workflow job installs Go 1.27.
+
+## I-54 · FIXED · The audit log does not record which rule decided a tool call
+
+- **Symptoms:** a blocked tool call's row in `audit.db` holds the verdict and the rule's message, but not the rule's ID. Anything reading the log (the dashboard, a query) cannot group or filter decisions by rule.
+- **Root cause:** the daemon computes `matchedRuleId` for its reply (`packages/daemon/src/supervisor-daemon.ts`), but the `events` table has no column for it and `StorageEngine.insertEvent` does not take one (`packages/storage/src/db.ts`).
+- **Fix:** `events` has a `rule_id` column, `AuditEvent` has `ruleId`, and the daemon stores the matched rule (for an observe-mode hit, the rule that would have fired). A database made by an earlier version gets the column on open (`upgradeSchema`); its old rows keep NULL.
+- **Verification:** `regression: a stored event records the rule that decided it` (`packages/daemon/tests/regressions.test.ts`; old code: `actual undefined, expected 'RULE-BLOCK-DESTRUCTIVE-SHELL'`) and `regression: an audit.db made before rule IDs were stored is upgraded on open and keeps its rows` (`packages/storage/tests/storage.test.ts`; old code stored `undefined` instead of `'RULE-X'`).
+
+## I-55 · FIXED · Hook calls made while the daemon is stopped are not recorded
+
+- **Symptoms:** with no daemon running, the hook still allows and denies tool calls from the local rules, but nothing is written to `audit.db`, so those calls are missing from `ctrlplane audit` and from the dashboard.
+- **Root cause:** only the daemon writes events. The hook's no-daemon path (`evaluateLocally` in `packages/cli/src/commands/hook-cmd.ts`) returns the verdict without recording it.
+- **Fix:** with no daemon running, the hook writes the call itself, through the same row builder the daemon uses (`packages/daemon/src/audit-record.ts`), so the rows are identical and redacted the same way. It writes only in a project that has a `.ctrlplane` folder and only when no daemon is running: a daemon that answered too slowly still records the call, and writing it here too would count it twice. `StorageEngine.appendEvent` takes the next sequence number inside one write transaction, so parallel hook processes never share a number. A storage failure never changes the verdict. Sessions created this way have git branch `unknown`, because the hook must exit promptly.
+- **Cost:** about 85–100 ms more per tool call while the daemon is stopped (median 305 → 400 ms on Windows, Node 24), most of it loading SQLite into each hook process (~44 ms). With the daemon running nothing changes. Kept, because the no-daemon path is the fallback and `ctrlplane start` removes the cost.
+- **Verification:** `packages/cli/tests/offline-record.test.ts`. `regression: without a daemon, a blocked tool call is still written to the audit log` (old code: `actual 0, expected 1`), the redaction test, and `hook processes running at the same time get different sequence numbers` (four real processes; old code: `actual []`) fail on the old code. `a folder that was never set up with ctrlplane gets no audit database` and `with the daemon running, a tool call is recorded once, by the daemon` guard the limits.
