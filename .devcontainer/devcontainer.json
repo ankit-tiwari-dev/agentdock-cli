@@ -1,0 +1,12 @@
+{
+  "name": "agentdock-cli",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "node",
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && npm ci",
+  "mounts": ["source=agentdock-cli-go-mod,target=/home/node/go/pkg/mod,type=volume"],
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "editorconfig.editorconfig"]
+    }
+  }
+}
