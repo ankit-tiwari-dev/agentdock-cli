@@ -58,3 +58,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  devcontainer:
+    name: dev container (build, make ci, actionlint)
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: build the dev container and run every gate in it
+        run: make devcontainer-check

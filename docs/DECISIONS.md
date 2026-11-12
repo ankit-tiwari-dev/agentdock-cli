@@ -57,3 +57,9 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Decision:** `ctrlplane spec approve` writes `approved_hash` next to `status: approved`. A spec whose title and body no longer match that hash loads as `draft`, and so does a spec marked approved by hand with no hash. Agents may not run `spec approve`.
 - **Why:** the approved spec is injected into every session as the agreed criteria. If an edit kept the approval, an agent could change a criterion and still have it shown as agreed.
 - **Cost:** a spec approved before this change, or edited after approval, must be approved again.
+
+## D-11 · Docker is for developing the CLI, not for running it
+
+- **Decision:** `.devcontainer/` gives contributors the toolchain CI uses (Node 24, Go 1.27, make, git), and CI runs `make ci` inside it. There is no image for running the CLI, the daemon or the hooks.
+- **Why:** the agent starts `ctrlplane hook` before every tool call, on the machine where the agent runs, with a 1500 ms budget. Starting a container per call would spend most of that budget, and the hook would see only the folders shared with the container. The daemon also has to read the same project folders and git state as the agent. Version drift for users is handled by `engines`, `.nvmrc`, `npm ci` and the CI matrix; the dev container removes it for contributors.
+- **Cost:** two base images to keep current (Dependabot updates their digests; a new Node or Go release line is moved by hand, together with `.nvmrc`, `engines` and the workflows).

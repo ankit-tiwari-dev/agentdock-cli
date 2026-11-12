@@ -27,3 +27,16 @@ updates:
       # and a separate PR for each fails CodeQL.
       github-actions:
         patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /.devcontainer
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # A new Node or Go release line goes with .nvmrc, `engines`, the CI matrix and the workflows'
+      # go-version, so it is moved by hand. The digests of the current versions are still updated.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+      # Go releases are 1.x, so a new release line (1.27 to 1.28) is a minor version.
+      - dependency-name: golang
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

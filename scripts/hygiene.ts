@@ -92,6 +92,34 @@ export function findUnpinnedActions(file: string, text: string): Finding[] {
   return findings;
 }
 
+const PINNED_IMAGE = /^[^\s@]+@sha256:[0-9a-f]{64}$/;
+
+/**
+ * Every image a Dockerfile pulls, through `FROM` or `COPY --from=<image>`, is named by digest, so a rebuilt tag
+ * cannot change what is built; Dependabot moves the digest. An earlier stage (by name or number) and `scratch`
+ * name no image and pass.
+ */
+export function findUnpinnedImages(file: string, text: string): Finding[] {
+  const findings: Finding[] = [];
+  const stages = new Set<string>(["scratch"]);
+  text.split("\n").forEach((line, index) => {
+    const from = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?/i.exec(line);
+    const copy = /^\s*COPY\s+(?:--\S+\s+)*?--from=(\S+)/i.exec(line);
+    const image = from?.[1] ?? copy?.[1];
+    if (image === undefined) return;
+    const isStage = stages.has(image.toLowerCase()) || (copy !== null && /^\d+$/.test(image));
+    if (!isStage && !PINNED_IMAGE.test(image)) {
+      findings.push({
+        check: "pinned-images",
+        file: `${file}:${index + 1}`,
+        detail: `${image} is not pinned to a digest`,
+      });
+    }
+    if (from?.[2]) stages.add(from[2].toLowerCase());
+  });
+  return findings;
+}
+
 /** A test file counts only if it declares a test; an empty `*.test.ts` does not. */
 const DECLARES_TEST = /\b(?:test|it|describe)\s*\(/;
 
@@ -161,6 +189,7 @@ function runAllChecks(root: string): Finding[] {
     const text = readFileSync(join(root, file), "utf8");
     findings.push(...findForbiddenNames(file, text), ...findPlanningReferences(file, text));
     if (/^\.github\/workflows\/.+\.ya?ml$/.test(file)) findings.push(...findUnpinnedActions(file, text));
+    if (/(^|\/)(Dockerfile|[^/]+\.Dockerfile)$/.test(file)) findings.push(...findUnpinnedImages(file, text));
   }
 
   const packageDirs = readdirSync(join(root, "packages"), { withFileTypes: true })

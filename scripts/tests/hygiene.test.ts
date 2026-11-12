@@ -8,6 +8,7 @@ import {
   findPackagesWithoutTests,
   findPlanningReferences,
   findUnpinnedActions,
+  findUnpinnedImages,
   sha256,
 } from "../hygiene.ts";
 
@@ -148,5 +149,31 @@ test("regression: hygiene - an empty *.test.ts file does not count as a test", (
   assert.deepEqual(
     findings.map((f) => f.file),
     ["packages/empty", "packages/comment"],
+  );
+});
+
+test("hygiene - every image a Dockerfile pulls is named by digest; an earlier stage or scratch needs none", () => {
+  const digest = `sha256:${"a".repeat(64)}`;
+  const dockerfile = [
+    `FROM node:24-bookworm@${digest} AS build`,
+    `COPY --from=golang:1.27-bookworm@${digest} /usr/local/go /usr/local/go`,
+    "COPY --from=golang:1.27-bookworm /usr/local/go /usr/local/go",
+    "COPY --chown=node:node --from=busybox:latest /bin/sh /bin/sh",
+    "COPY --from=build /src/out /out",
+    "COPY --from=0 /src/out /out",
+    "COPY package.json ./",
+    "from --platform=linux/amd64 node:latest as tools",
+    "FROM tools",
+    "FROM scratch",
+    "FROM node:24-bookworm",
+  ].join("\n");
+  assert.deepEqual(
+    findUnpinnedImages("Dockerfile", dockerfile).map((f) => `${f.file} ${f.detail}`),
+    [
+      "Dockerfile:3 golang:1.27-bookworm is not pinned to a digest",
+      "Dockerfile:4 busybox:latest is not pinned to a digest",
+      "Dockerfile:8 node:latest is not pinned to a digest",
+      "Dockerfile:11 node:24-bookworm is not pinned to a digest",
+    ],
   );
 });

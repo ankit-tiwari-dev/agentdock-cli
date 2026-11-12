@@ -80,6 +80,14 @@ make typecheck
 make test
 ```
 
+### Develop in a dev container
+
+`.devcontainer/` holds the environment CI uses: Node 24, Go 1.27 (for actionlint, gitleaks and osv-scanner), make and git, with the images pinned by digest. In VS Code, run **Dev Containers: Reopen in Container**; it installs the dependencies with `npm ci`. On Windows and macOS, **Dev Containers: Clone Repository in Container Volume** is much faster than opening a local folder, because `node_modules` then lives inside Docker instead of on a shared folder.
+
+`make devcontainer-check` builds that image and runs `make ci` and actionlint in it, as CI does on every pull request. Run it from a normal clone, not a `git worktree`.
+
+The dev container is for working on the CLI. Use the CLI itself on your machine, where the agent's hooks call it ([`docs/DECISIONS.md`](docs/DECISIONS.md) → D-11).
+
 Rules for changing the code: [`CLAUDE.md`](CLAUDE.md). Known traps: [`docs/PITFALLS.md`](docs/PITFALLS.md). Known bugs: [`ISSUE.md`](ISSUE.md).
 
 ## License
