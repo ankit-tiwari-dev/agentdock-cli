@@ -106,6 +106,13 @@ async function evaluateLocally(payload: AgentHookPayload, projectRoot: string): 
     stopHookActive: payload.stopHookActive,
     permissionMode: payload.permissionMode,
   });
+  // The daemon would have written this call to the audit log; without it, the hook does, the same way.
+  try {
+    const { recordWithoutDaemon } = await import("../../../daemon/src/audit-record.ts");
+    recordWithoutDaemon(payload, projectRoot, result, Math.round(result.latencyMs));
+  } catch {
+    // A locked or broken audit log must never change the verdict.
+  }
   return {
     decision: result.decision,
     exitCode: result.decision === "DENY" ? 2 : 0,

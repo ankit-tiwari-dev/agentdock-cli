@@ -320,6 +320,27 @@ export class StorageEngine {
     );
   }
 
+  /**
+   * Inserts an event with the session's next sequence number, for writers that keep no counter of their own
+   * (hook processes). Reading the last number and inserting happen in one write transaction, so two processes
+   * appending at the same moment cannot take the same number. Returns the number used.
+   */
+  public appendEvent(
+    event: Omit<AuditEvent, "id" | "sequenceNum">,
+    makeId: (sessionId: string, sequenceNum: number, createdAt: number) => string,
+  ): number {
+    this.db.exec("BEGIN IMMEDIATE;");
+    try {
+      const sequenceNum = this.lastSequenceNum(event.sessionId) + 1;
+      this.insertEvent({ ...event, id: makeId(event.sessionId, sequenceNum, event.createdAt), sequenceNum });
+      this.db.exec("COMMIT;");
+      return sequenceNum;
+    } catch (err) {
+      this.db.exec("ROLLBACK;");
+      throw err;
+    }
+  }
+
   public listEventsForSession(sessionId: string): AuditEvent[] {
     const stmt = this.db.prepare(`
       SELECT * FROM events WHERE session_id = ? ORDER BY sequence_num ASC
