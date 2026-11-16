@@ -1,2 +1,7 @@
 node_modules
 package-lock.json
+
+# Skills copied from other projects, kept exactly as published (.claude/skills/README.md)
+.claude/skills/systematic-debugging
+.claude/skills/test-driven-development
+.claude/skills/verification-before-completion
