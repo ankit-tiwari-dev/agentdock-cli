@@ -61,10 +61,11 @@ Status flow: FOUND → IN PROGRESS → FIXED. Each entry: symptoms, root cause, 
 - **Root cause:** `packages/git-analyzer/src/agent-commit-tracker.ts` runs `git add --all`. The product blocks that same command for agents (`RULE-GIT-STAGE-ALL` in `packages/policy-engine/src/catalog.ts`).
 - **Fix (proposed):** stage only the files the turn modified, as the backtracer or event log reports them.
 
-## I-7 · FOUND · The README says MIT but there is no LICENSE file
+## I-7 · FIXED · The README says MIT but there is no LICENSE file
 
 - **Symptoms:** the README license badge links to `LICENSE`, which does not exist. Without a license file the code is not open source in practice.
-- **Fix (proposed):** the owner picks a license and adds `LICENSE`.
+- **Fix:** an MIT `LICENSE` file at the repo root (`docs/DECISIONS.md` → D-12). The README's License section names MIT and links to it.
+- **Verification:** the README's link target `LICENSE` exists, and `make ci` passes.
 
 ## I-11 · FIXED · The verification report always says lint passed
 
