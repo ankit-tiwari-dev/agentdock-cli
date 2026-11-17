@@ -20,6 +20,7 @@ import {
   handleHandoffCommand,
   handleMemoryCommand,
 } from "./commands/context-cmd.ts";
+import { handleSupervisorCommand } from "./commands/supervisor-cmd.ts";
 import { calculateTurnCost } from "../../core/src/token-pricing.ts";
 
 function print(res: CommandResult): number {
@@ -46,6 +47,9 @@ export async function runCli(args: string[]): Promise<number> {
 
     case "policies":
       return print(await handlePoliciesCommand(subArgs[0], subArgs.slice(1)));
+
+    case "supervisor":
+      return print(await handleSupervisorCommand(subArgs[0], subArgs.slice(1)));
 
     case "pause":
       return print(handlePauseCommand(subArgs));
@@ -151,7 +155,7 @@ export async function runCli(args: string[]): Promise<number> {
     case "help":
     default: {
       console.log(`
-AI Development Control Plane (@ctrlplane) v0.1.0
+AI Development Control Plane (@ctrlplane) v0.2.0
 
 USAGE:
   ctrlplane <command> [options]
@@ -172,6 +176,15 @@ POLICY COMMANDS:
   policies set <id> <param> <json>    Change a rule parameter      [--local|--user]
   policies test --command "<cmd>" [--expect deny|ask|instruct|allow]
                                       Dry-run a tool call; exits 1 if --expect fails
+
+SUPERVISOR PROVIDER COMMANDS (run these in your own terminal):
+  supervisor use <codex|claude|openai-compatible> [model] [--base-url <url>]
+                                      Pick the model that plans and explains changes in the dashboard
+  supervisor set-key <claude|openai-compatible> [--stdin]
+                                      Save an API key in the OS keychain (hidden prompt, never an argument)
+  supervisor remove-key <claude|openai-compatible>
+                                      Delete a saved key
+  supervisor status [--check]         Provider, model and saved keys; --check tests the key with one free call
 
 CONTEXT COMMANDS:
   context [--source compact]          Show the context pack a new session receives

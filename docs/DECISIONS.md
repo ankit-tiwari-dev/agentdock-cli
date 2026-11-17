@@ -69,3 +69,9 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Decision:** the code is released under the MIT License (`LICENSE` at the repo root).
 - **Why:** it makes the project open source with the fewest conditions for users and contributors: they only have to keep the copyright and license notice.
 - **Cost:** anyone may reuse the code, including commercially, with no obligation to share their changes.
+
+## D-13 · Supervisor API keys live only in the OS keychain
+
+- **Decision:** `ctrlplane supervisor` manages the provider and API key for the dashboard's supervisor. This is a deliberate step past D-5, which kept AgentDock free of key management. Keys are read at a hidden prompt or from `--stdin` and stored in the OS keychain through each OS's own tool (Windows Credential Manager through Windows PowerShell, macOS `security`, Linux `secret-tool`). The key reaches the tool on stdin, never in its arguments. The provider, model and base URL go in `$CTRLPLANE_HOME/supervisor.json`, which holds no secret and is written through a temp file and a rename. Agents are denied `supervisor use|set-key|remove-key`.
+- **Why:** a key in a file or an argument ends up in backups, shell history or the process list. Calling the OS tools keeps the shipped code free of third-party runtime dependencies (D-8) and of native modules. A Windows script read from stdin is used because `cmdkey` would put the key in its arguments.
+- **Cost:** Linux users need `libsecret-tools` and a running Secret Service. Each Windows keychain call starts PowerShell (about a second). The tool calls are tested with a fake runner in CI; the real keychain test (`packages/cli/tests/keychain-os.test.ts`) runs only with `AGENTDOCK_REAL_KEYCHAIN=1`.

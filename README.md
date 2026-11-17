@@ -70,6 +70,35 @@ ctrlplane cost claude-sonnet-4-5 15000 2500
 
 Run `ctrlplane help` for the full list. Until the CLI is installed globally, use `node packages/cli/src/bin.ts` in place of `ctrlplane`.
 
+### Supervisor providers
+
+These commands choose the model the AgentDock dashboard uses to plan features and explain changes: `codex` (the local Codex CLI), `claude` (the Anthropic API) or `openai-compatible` (any server with the OpenAI chat API, such as Ollama or LM Studio). Run them in your own terminal. Agents are denied `use`, `set-key` and `remove-key`, because those decide where code and keys are sent.
+
+```bash
+ctrlplane supervisor use claude claude-sonnet-5-5           # model defaults to claude-opus-5-5
+ctrlplane supervisor set-key claude                         # type the key at a hidden prompt
+ctrlplane supervisor use openai-compatible llama3.2 --base-url http://127.0.0.1:11434/v1
+ctrlplane supervisor use codex                              # Codex's own default model
+ctrlplane supervisor status --check                         # one free models-list call
+ctrlplane supervisor remove-key claude
+```
+
+- **Keys** are stored only in the OS keychain (service `agentdock`, account `claude` or `openai-compatible`). They are read at a hidden prompt or from `--stdin` (`op read ... | ctrlplane supervisor set-key claude --stdin`), never from an argument, because arguments are visible in the process list. No file holds a key.
+- **The settings file** is `$CTRLPLANE_HOME/supervisor.json` (default `~/.ctrlplane`). It holds no secret:
+
+  ```json
+  {
+    "version": 1,
+    "provider": "openai-compatible",
+    "model": "llama3.2",
+    "openaiCompatible": { "baseUrl": "http://127.0.0.1:11434/v1" }
+  }
+  ```
+
+- **Base URL rule:** `https` for any host; plain `http` only for `127.0.0.1`, `[::1]` and `localhost`; no user name, password, query string or fragment.
+- **What is sent where:** `status --check` sends the key to the provider's models list and nothing else. Codex keeps its own login and gets no key from AgentDock.
+- **Keychain per OS:** Windows Credential Manager (through Windows PowerShell) and the macOS `security` tool need nothing extra. Linux needs `secret-tool` from `libsecret-tools` (Debian/Ubuntu) or `libsecret` (Fedora/Arch), and a running Secret Service such as GNOME Keyring or KWallet.
+
 ## Development
 
 ```bash

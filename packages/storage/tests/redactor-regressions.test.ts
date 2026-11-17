@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { redactObject, redactSecrets } from "../src/index.ts";
 
 test("regression: redaction keeps no character of the secret value", () => {
@@ -183,5 +184,22 @@ test("regression: a long run of letters is redacted in linear time", () => {
     redactSecrets(text);
     const ms = performance.now() - started;
     assert.ok(ms < 300, `${ms.toFixed(0)} ms for ${text.length} characters`);
+  }
+});
+
+test("the shared secret vectors redact the same way in both repos", () => {
+  const file = JSON.parse(readFileSync(new URL("./fixtures/secret-vectors.json", import.meta.url), "utf8")) as {
+    vectors: Array<{
+      name: string;
+      input: string;
+      expected: string;
+      secret: { prefix: string; body: string; repeat: number };
+    }>;
+  };
+  assert.ok(file.vectors.length >= 5);
+  for (const v of file.vectors) {
+    const secret = v.secret.prefix + v.secret.body.repeat(v.secret.repeat);
+    const out = redactSecrets(v.input.replaceAll("{secret}", secret)).sanitized;
+    assert.equal(out, v.expected.replaceAll("{secret}", secret), v.name);
   }
 });

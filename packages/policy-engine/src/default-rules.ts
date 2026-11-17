@@ -58,7 +58,7 @@ const HOOK_CONFIG_PATHS = [...AGENT_HOOK_CONFIG_FILES, ...AGENT_HOOK_DIRS];
 // Raw-text match, kept for an off-switch typed inside another program's string
 // (`node -e "execSync('ctrlplane stop')"`). Memory is injected into every future session,
 // so only the developer may write it.
-const OFF_SWITCH_VERBS = String.raw`(?:stop|pause|uninstall|policies\s+(?:disable|off|observe|set)|memory\s+(?:add|rm))\b`;
+const OFF_SWITCH_VERBS = String.raw`(?:stop|pause|uninstall|policies\s+(?:disable|off|observe|set)|memory\s+(?:add|rm)|supervisor\s+(?:set-key|remove-key|use))\b`;
 const SUPERVISOR_OFF_SWITCH = new RegExp(
   String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${OFF_SWITCH_VERBS}|\bbin\.ts["']?\s+${OFF_SWITCH_VERBS}`,
   "i",
@@ -67,7 +67,8 @@ const SUPERVISOR_OFF_SWITCH = new RegExp(
 /**
  * `ctrlplane` sub-commands an agent must never run on itself: they stop, pause, weaken or
  * uninstall supervision (`init` can rewrite the hooks), or write what the next session is told
- * (`handoff`, `memory add`) or treats as approved (`spec approve`). `words` exclude options.
+ * (`handoff`, `memory add`) or treats as approved (`spec approve`). `supervisor use|set-key|remove-key`
+ * choose where code and keys are sent, so only the developer runs them. `words` exclude options.
  */
 function isOffSwitch(words: string[]): boolean {
   const [a, b] = words.map((w) => w.toLowerCase());
@@ -77,6 +78,7 @@ function isOffSwitch(words: string[]): boolean {
   if (a === "memory") return b === "add" || b === "rm";
   if (a === "handoff") return b !== "show";
   if (a === "spec") return b === "approve";
+  if (a === "supervisor") return b === "set-key" || b === "remove-key" || b === "use";
   return false;
 }
 

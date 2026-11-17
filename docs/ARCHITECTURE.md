@@ -40,17 +40,19 @@ Dependencies only point downwards. `core` depends on nothing, and `cli` sits on 
 | `agent-adapters` | Per-agent payload normalizers, hook install/uninstall, hook client, transcript backtracer                                                                      | core, daemon                         |
 | `verifier`       | Deterministic checks plus the criteria audit against the spec                                                                                                  | core, git-analyzer, intent           |
 | `explanation`    | Diff explanation, blast radius, comprehension quiz, prompt coach                                                                                               | core, git-analyzer                   |
-| `cli`            | The `ctrlplane` command and the hook entry point                                                                                                               | all of the above                     |
+| `cli`            | The `ctrlplane` command and the hook entry point; the supervisor provider settings file and OS keychain access (`ctrlplane supervisor`)                        | all of the above                     |
 
 ## Where state lives
 
-| Path                                                        | Holds                                                  |
-| ----------------------------------------------------------- | ------------------------------------------------------ |
-| `<project>/.ctrlplane/audit.db`                             | Events, sessions, context and memory for this project  |
-| `<project>/.ctrlplane/blobs/`                               | Large tool payloads, gzip-compressed, named by SHA-256 |
-| `<project>/.ctrlplane/spec.md`                              | The developer's spec and its approval                  |
-| `<project>/.ctrlplane/policies.json`, `policies.local.json` | Project rule settings (shared, and personal)           |
-| `<project>/.ctrlplane/daemon.lock`                          | PID and IPC address of the running daemon              |
-| `$CTRLPLANE_HOME/policies.json` (default `~/.ctrlplane`)    | The developer's own rule settings for every project    |
+| Path                                                        | Holds                                                         |
+| ----------------------------------------------------------- | ------------------------------------------------------------- |
+| `<project>/.ctrlplane/audit.db`                             | Events, sessions, context and memory for this project         |
+| `<project>/.ctrlplane/blobs/`                               | Large tool payloads, gzip-compressed, named by SHA-256        |
+| `<project>/.ctrlplane/spec.md`                              | The developer's spec and its approval                         |
+| `<project>/.ctrlplane/policies.json`, `policies.local.json` | Project rule settings (shared, and personal)                  |
+| `<project>/.ctrlplane/daemon.lock`                          | PID and IPC address of the running daemon                     |
+| `$CTRLPLANE_HOME/policies.json` (default `~/.ctrlplane`)    | The developer's own rule settings for every project           |
+| `$CTRLPLANE_HOME/supervisor.json`                           | Dashboard supervisor provider, model and base URL (no secret) |
+| OS keychain, service `agentdock`                            | Supervisor API keys, one entry per provider                   |
 
 Design rationale: `docs/DECISIONS.md`. Known traps: `docs/PITFALLS.md`.

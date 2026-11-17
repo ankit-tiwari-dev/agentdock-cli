@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "provider": "openai-compatible",
+  "model": "llama3.2",
+  "openaiCompatible": {
+    "baseUrl": "http://127.0.0.1:11434/v1"
+  }
+}
