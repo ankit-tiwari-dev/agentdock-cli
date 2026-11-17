@@ -92,4 +92,4 @@ Rules for changing the code: [`CLAUDE.md`](CLAUDE.md). Known traps: [`docs/PITFA
 
 ## License
 
-No license has been chosen yet (`ISSUE.md` → I-7).
+MIT. See [`LICENSE`](LICENSE).
