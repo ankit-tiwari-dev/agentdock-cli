@@ -111,6 +111,26 @@ test("regression: agents cannot re-run init, write a handoff or approve their ow
   );
 });
 
+test("regression: an agent cannot run ctrlplane supervisor use, set-key or remove-key, but can run status", () => {
+  const engine = new PolicyEngine();
+  expectDecision(
+    engine,
+    [
+      "ctrlplane supervisor use openai-compatible m --base-url https://other.example/v1",
+      "ctrlplane supervisor use codex",
+      "echo key | ctrlplane supervisor set-key claude --stdin",
+      "ctrlplane supervisor remove-key claude",
+      `ctrlplane "supervisor" use claude`,
+      "npx ctrlplane supervisor set-key openai-compatible",
+      "node packages/cli/src/bin.ts supervisor use claude",
+      `node -e "require('child_process').execSync('ctrlplane supervisor use codex')"`,
+    ],
+    "DENY",
+    "RULE-BLOCK-AGENT-SELF-TAMPER",
+  );
+  expectDecision(engine, ["ctrlplane supervisor status", "ctrlplane supervisor status --check"], "ALLOW");
+});
+
 test("regression: deleting, moving or rewriting the protected folders themselves is denied", () => {
   const engine = new PolicyEngine();
   expectDecision(
