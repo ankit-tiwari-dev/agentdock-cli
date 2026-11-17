@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { runHook } from "../src/commands/hook-cmd.ts";
 import { handleStartDaemon, handleStopDaemon } from "../src/commands/daemon-cmd.ts";
 import { StorageEngine } from "../../storage/src/index.ts";
+import { isProcessAlive } from "../../daemon/src/lock.ts";
 
 const BIN = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
 
@@ -47,6 +48,29 @@ function readEvents(dir: string, session = "s") {
     storage.close();
   }
 }
+
+function removeProject(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+}
+
+// Stop waits only until isProcessAlive is false; Windows can still hold the folder at that moment.
+test("regression: a folder a process ran in can be removed as soon as the process is gone", async () => {
+  const dir = project();
+  const child = spawn(process.execPath, ["-e", "console.log('up'); setTimeout(() => {}, 60000)"], {
+    cwd: dir,
+    detached: true,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  try {
+    await new Promise((r) => child.stdout!.once("data", r));
+    process.kill(child.pid!);
+    while (isProcessAlive(child.pid!));
+  } finally {
+    child.kill();
+  }
+  removeProject(dir);
+  assert.equal(existsSync(dir), false);
+});
 
 test("regression: without a daemon, a blocked tool call is still written to the audit log", async () => {
   const dir = project();
@@ -105,7 +129,7 @@ test("hook processes running at the same time get different sequence numbers", a
       .sort();
     assert.deepEqual(sequence, [1, 2, 3, 4]);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeProject(dir);
   }
 });
 
@@ -125,6 +149,6 @@ test("with the daemon running, a tool call is recorded once, by the daemon", asy
   try {
     assert.equal(readEvents(dir).events.length, 1);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeProject(dir);
   }
 });

@@ -21,3 +21,7 @@ A transcript line is `{type, message: {role, model, content, usage}, timestamp, 
 ## P-5 · A server left running keeps `node --test` alive
 
 If an assertion throws before `daemon.stop()`, the open IPC server keeps the test process alive until the global timeout. Start servers inside `try` and stop them in `finally`. Give every test client a timeout.
+
+## P-6 · Windows holds a folder a process just ran in
+
+A process keeps its working folder and open files locked until Windows finishes tearing it down, which can be after `isProcessAlive` already says it is gone. A test that starts a daemon or child process in its temp folder removes that folder with `rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })`, never a plain `rmSync`. (`ISSUE.md` → I-58)

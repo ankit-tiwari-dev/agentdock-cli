@@ -390,3 +390,10 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 - **Symptoms:** a moderate alert for `minimatch` 10.2.6. A crafted glob pattern can make matching take very long.
 - **Root cause:** `eslint`, `@eslint/config-array` and `@typescript-eslint/typescript-estree` require `minimatch ^10`, even in their latest releases; the fix is in 11.0.1. It is a development dependency only: it runs inside the linter, on glob patterns this repo writes, and is not part of what ships.
 - **Fix (waiting):** none yet. It clears when those packages move to minimatch 11, and Dependabot will propose that update. Forcing 11 with an npm `overrides` entry would run the linters on a major version they were not tested with. The alert stays open rather than dismissed, so it is not forgotten.
+
+## I-58 · FIXED · The daemon test failed on Windows with EPERM when removing its folder
+
+- **Symptoms:** `test (windows-latest, node 24)` failed on `main` with `EPERM, Permission denied` on the test's `ctrlplane-offline-*` folder, in `with the daemon running, a tool call is recorded once, by the daemon`. The test's own checks passed; the other 7 CI jobs and the PR run were green.
+- **Root cause:** the test removed its folder with a plain `rmSync` (`packages/cli/tests/offline-record.test.ts`). The daemon runs in that folder, and `handleStopDaemon` (`packages/cli/src/commands/daemon-cmd.ts`) returns once `isProcessAlive` is false. On Windows the folder can still be held at that moment: removing it right after a process that ran there for 50 ms or more exits failed 10 times out of 10 on a local Windows machine, and 0 out of 10 with retries. On CI the gap is usually long enough, so it failed only some of the time.
+- **Fix:** the file's process tests remove their folder through `removeProject`, which retries (`maxRetries: 5, retryDelay: 200`), as `hook-hardening`, `process-e2e`, `e2e` and `regressions` already do.
+- **Verification:** `regression: a folder a process ran in can be removed as soon as the process is gone` failed 5 out of 5 runs on Windows before the fix and passed 10 out of 10 after. The whole file passed 10 runs in a row on Windows.
