@@ -49,8 +49,18 @@ function readEvents(dir: string, session = "s") {
   }
 }
 
-function removeProject(dir: string): void {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+// Node 22's rmSync does not retry EBUSY on the folder itself, so the retry loop is ours.
+async function removeProject(dir: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? "";
+      if (attempt >= 30 || !["EBUSY", "EPERM", "ENOTEMPTY"].includes(code)) throw err;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
 }
 
 // Stop waits only until isProcessAlive is false; Windows can still hold the folder at that moment.
@@ -64,11 +74,11 @@ test("regression: a folder a process ran in can be removed as soon as the proces
   try {
     await new Promise((r) => child.stdout!.once("data", r));
     process.kill(child.pid!);
-    while (isProcessAlive(child.pid!));
+    while (isProcessAlive(child.pid!)) await new Promise((r) => setImmediate(r));
   } finally {
     child.kill();
   }
-  removeProject(dir);
+  await removeProject(dir);
   assert.equal(existsSync(dir), false);
 });
 
@@ -129,7 +139,7 @@ test("hook processes running at the same time get different sequence numbers", a
       .sort();
     assert.deepEqual(sequence, [1, 2, 3, 4]);
   } finally {
-    removeProject(dir);
+    await removeProject(dir);
   }
 });
 
@@ -149,6 +159,6 @@ test("with the daemon running, a tool call is recorded once, by the daemon", asy
   try {
     assert.equal(readEvents(dir).events.length, 1);
   } finally {
-    removeProject(dir);
+    await removeProject(dir);
   }
 });
