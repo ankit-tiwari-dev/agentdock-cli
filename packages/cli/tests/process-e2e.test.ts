@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { removeDir } from "./remove-dir.ts";
 
 const BIN = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
 
@@ -61,7 +62,7 @@ test("regression (real processes): start keeps the daemon alive, hooks read Clau
     assert.equal(offline.code, 2, "rules still apply in-process when the daemon is down");
   } finally {
     cli(dir, ["stop"]);
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    await removeDir(dir);
   }
 });
 
