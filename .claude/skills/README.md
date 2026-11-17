@@ -1,4 +1,4 @@
-# Skills for Claude Code in this repo
+# Skill picker: skills for Claude Code in this repo
 
 Claude Code loads each folder here that holds a `SKILL.md` and uses it when the task matches its description.
 

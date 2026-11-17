@@ -31,3 +31,7 @@ The code invariants that are easy to break. The how and why live in `docs/` (ind
 
 - Bugs and findings: `ISSUE.md` (FOUND → IN PROGRESS → FIXED). A pattern that keeps coming back moves to `docs/PITFALLS.md`.
 - Design decisions: `docs/DECISIONS.md`. Docs point to code and to each other; they never restate a test run or a finished phase.
+
+## Skills
+
+- Whenever a task needs a skill, pick it from the skill picker in `.claude/skills/README.md` first. Use a global skill only when none there covers the task, and never a skill written for another project.
