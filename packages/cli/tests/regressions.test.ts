@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { handleInit } from "../src/commands/init.ts";
 import { DEFAULT_PROJECT_CONFIG } from "../../policy-engine/src/config.ts";
+import { removeDirSync } from "./remove-dir.ts";
 
 const BIN = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
 
@@ -16,7 +17,7 @@ function scratch(prefix: string): { dir: string; home: string; cleanup: () => vo
   const home = join(root, "home");
   mkdirSync(dir);
   mkdirSync(home);
-  return { dir, home, cleanup: () => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) };
+  return { dir, home, cleanup: () => removeDirSync(root) };
 }
 
 function cli(cwd: string, home: string, args: string[]) {

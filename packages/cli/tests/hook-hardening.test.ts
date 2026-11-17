@@ -9,6 +9,7 @@ import { runHook } from "../src/commands/hook-cmd.ts";
 import { handleStartDaemon, handleStatus, handleStopDaemon } from "../src/commands/daemon-cmd.ts";
 import { handleInit } from "../src/commands/init.ts";
 import { isProcessAlive } from "../../daemon/src/lock.ts";
+import { removeDir } from "./remove-dir.ts";
 
 const BIN = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
 
@@ -153,7 +154,7 @@ test("regression: status and start treat a lock whose daemon does not answer as 
   } finally {
     await handleStopDaemon(dir);
     bystander.kill();
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    await removeDir(dir);
   }
 });
 
