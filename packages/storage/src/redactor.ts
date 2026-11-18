@@ -39,6 +39,7 @@ function isSecretName(name: string): boolean {
 }
 
 const isRedacted = (value: string) => value.startsWith("[REDACTED_SECRET:");
+const isOneMarker = (value: string) => /^\[REDACTED_SECRET:[A-Z_]+\]$/.test(value);
 /** Long and plain enough to be a token rather than code such as `await` or `getToken(req)`. */
 const TOKEN_LIKE = /^[a-zA-Z0-9\-_./+=]{16,}/;
 
@@ -125,12 +126,15 @@ const REDACTION_PATTERNS: Array<{
     replacement: (_m, prefix) => `${prefix}[REDACTED_SECRET:BASIC_AUTH]`,
   },
   // The user may be empty (`redis://:pass@host`), and the password runs to the last `@` before the host, so a
-  // password that contains `@` is redacted whole.
+  // password that contains `@` is redacted whole. A URL user cannot hold `[` or `]`, so an earlier rule's marker
+  // (`https://[REDACTED_SECRET:GITHUB_TOKEN]@host`) is not read as `user:password`, and a password that is exactly
+  // one marker stays as it is.
   {
     category: "CONNECTION_STRING",
     // The lookbehind lets a scheme start only at a word start; without it, a long run of letters takes quadratic time.
-    regex: /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)([^\s/"'`]{3,})(@)/gi,
-    replacement: (_m, prefix, _password, at) => `${prefix}[REDACTED_SECRET:PASSWORD]${at}`,
+    regex: /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/[^\s:/@[\]]*:)([^\s/"'`]{3,})(@)/gi,
+    replacement: (m, prefix, password = "", at) =>
+      isOneMarker(password) ? m : `${prefix}[REDACTED_SECRET:PASSWORD]${at}`,
   },
   // AWS access key IDs: long-term (AKIA) and temporary (ASIA)
   {
