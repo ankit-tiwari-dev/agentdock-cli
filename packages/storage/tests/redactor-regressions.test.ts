@@ -203,3 +203,14 @@ test("the shared secret vectors redact the same way in both repos", () => {
     assert.equal(out, v.expected.replaceAll("{secret}", secret), v.name);
   }
 });
+
+test("regression: a token in a git remote URL is counted once, under its own category", () => {
+  const token = "ghp_" + "Mn4b".repeat(9);
+  for (const url of [`https://${token}@github.com/o/r.git`, `https://x-access-token:${token}@github.com/o/r.git`]) {
+    const result = redactSecrets(url);
+    assert.equal(result.secretsDetectedCount, 1, url);
+    assert.deepEqual(result.detectedCategories, ["GITHUB_TOKEN"], url);
+  }
+  const padded = redactSecrets(`https://u:${token}-x9q@github.com/o/r.git`).sanitized;
+  assert.equal(padded, "https://u:[REDACTED_SECRET:PASSWORD]@github.com/o/r.git");
+});
