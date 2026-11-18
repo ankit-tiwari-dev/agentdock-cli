@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Session, Specification, AuditEvent, VerificationReport } from "../../core/src/index.ts";
+import type { ModelUsage, Session, Specification, AuditEvent, VerificationReport } from "../../core/src/index.ts";
 import { redactObject, redactSecrets } from "./redactor.ts";
 import { BlobStore, BLOB_THRESHOLD_BYTES } from "./blob.ts";
 
@@ -108,6 +108,20 @@ export class StorageEngine {
       );
 
       CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, sequence_num);
+
+      CREATE TABLE IF NOT EXISTS session_usage (
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        unknown_model INTEGER NOT NULL DEFAULT 0,
+        turns INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (session_id, model)
+      );
 
       CREATE TABLE IF NOT EXISTS file_snapshots (
         id TEXT PRIMARY KEY,
@@ -377,6 +391,64 @@ export class StorageEngine {
         createdAt: Number(r.created_at),
       };
     });
+  }
+
+  /**
+   * Builds the index that time-range searches use. Not part of initSchema: every hook process opens the database,
+   * and building an index on a large events table holds the write lock, so only the daemon calls this, at start.
+   */
+  public ensureEventsCreatedAtIndex(): void {
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);");
+  }
+
+  // --- Session usage ---
+
+  /** Replaces a session's per-model usage in one transaction, so re-reading the same transcript never adds twice. */
+  public replaceSessionUsage(sessionId: string, rows: readonly ModelUsage[], updatedAt = Date.now()): void {
+    this.db.exec("BEGIN IMMEDIATE;");
+    try {
+      this.db.prepare("DELETE FROM session_usage WHERE session_id = ?").run(sessionId);
+      const insert = this.db.prepare(`
+        INSERT INTO session_usage (
+          session_id, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+          cost_usd, unknown_model, turns, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const row of rows) {
+        insert.run(
+          sessionId,
+          row.model,
+          row.inputTokens,
+          row.outputTokens,
+          row.cacheReadTokens,
+          row.cacheCreationTokens,
+          row.costUsd,
+          row.unknownModel ? 1 : 0,
+          row.turns,
+          updatedAt,
+        );
+      }
+      this.db.exec("COMMIT;");
+    } catch (err) {
+      this.db.exec("ROLLBACK;");
+      throw err;
+    }
+  }
+
+  public listSessionUsage(sessionId: string): ModelUsage[] {
+    const rows = this.db
+      .prepare("SELECT * FROM session_usage WHERE session_id = ? ORDER BY model")
+      .all(sessionId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      model: String(r.model),
+      inputTokens: Number(r.input_tokens),
+      outputTokens: Number(r.output_tokens),
+      cacheReadTokens: Number(r.cache_read_tokens),
+      cacheCreationTokens: Number(r.cache_creation_tokens),
+      costUsd: Number(r.cost_usd),
+      unknownModel: r.unknown_model === 1,
+      turns: Number(r.turns),
+    }));
   }
 
   // --- Specifications ---

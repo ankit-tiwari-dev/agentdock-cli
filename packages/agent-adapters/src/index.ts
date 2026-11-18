@@ -4,5 +4,6 @@ export * from "./codex-adapter.ts";
 export * from "./opencode-adapter.ts";
 export * from "./tool-canonicalizer.ts";
 export * from "./backtracer.ts";
+export * from "./claude-usage.ts";
 export * from "./hook-output.ts";
 export * from "./hook-command.ts";
