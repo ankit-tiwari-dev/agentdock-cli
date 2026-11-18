@@ -1,5 +1,6 @@
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { performance } from "node:perf_hooks";
@@ -26,6 +27,7 @@ import { ContextRecorder, type RecorderOptions } from "../../context/src/recorde
 import { IPCServer, type IPCEndpoint } from "./ipc-server.ts";
 import { findProjectRoot } from "./lock.ts";
 import { DEFAULT_SESSION, auditEventFor, auditEventId, describeOutcome } from "./audit-record.ts";
+import { UsageJobQueue, type UsageJobDeps } from "./usage-job.ts";
 
 export {
   DAEMON_UNAVAILABLE,
@@ -52,6 +54,8 @@ export interface DaemonConfig {
   projectEngine?: ProjectEngine;
   /** Context recording options (tests inject a fake summary runner here). */
   recorder?: RecorderOptions;
+  /** Where Claude Code transcripts are read from after Stop; tests point `home` at a temp folder. */
+  usage?: Partial<Pick<UsageJobDeps, "home" | "fs" | "opener" | "onDone">> & { settleMs?: number };
 }
 
 export interface DaemonEventNotice {
@@ -84,6 +88,7 @@ export class SupervisorDaemon {
   private reloading = false;
   private recorderOptions: RecorderOptions;
   private recorder: ContextRecorder;
+  private usageJobs: UsageJobQueue;
 
   constructor(config: DaemonConfig) {
     this.config = config;
@@ -100,6 +105,15 @@ export class SupervisorDaemon {
         : fallbackProjectEngine(this.projectRoot));
     this.recorderOptions = { aiSummaries: this.projectEngine?.config.context.aiSummaries ?? false, ...config.recorder };
     this.recorder = new ContextRecorder(this.storage, this.projectRoot, this.recorderOptions);
+    this.usageJobs = new UsageJobQueue({
+      storage: this.storage,
+      home: config.usage?.home ?? homedir(),
+      fs: config.usage?.fs,
+      opener: config.usage?.opener,
+      onDone: config.usage?.onDone,
+      settleMs: config.usage?.settleMs,
+      warn: (line) => console.error(`[ctrlplane daemon] ${line}`),
+    });
 
     this.lockFilePath = join(this.projectRoot, ".ctrlplane", "daemon.lock");
 
@@ -156,6 +170,12 @@ export class SupervisorDaemon {
   }
 
   public async start(): Promise<IPCEndpoint> {
+    try {
+      this.storage.ensureEventsCreatedAtIndex();
+    } catch (err) {
+      // Search by time still works without it, only slower.
+      console.error(`[ctrlplane daemon] could not build the events time index: ${String(err)}`);
+    }
     const endpoint = await this.ipcServer.start();
 
     const ctrlplaneDir = dirname(this.lockFilePath);
@@ -177,6 +197,7 @@ export class SupervisorDaemon {
 
   public async stop(): Promise<void> {
     await this.ipcServer.stop();
+    await this.usageJobs.close();
     this.storage.close();
 
     if (existsSync(this.lockFilePath)) {
@@ -300,6 +321,11 @@ export class SupervisorDaemon {
       this.storage.insertEvent({ ...row, id: auditEventId(sessionId, sequenceNum, createdAt), sequenceNum });
     } catch {
       // Storage problems must never block the agent loop.
+    }
+
+    if (payload.hookEventName === "Stop" || payload.hookEventName === "SessionEnd") {
+      // Reads the transcript after the verdict is sent; never awaited here.
+      this.usageJobs.schedule(sessionId);
     }
 
     try {

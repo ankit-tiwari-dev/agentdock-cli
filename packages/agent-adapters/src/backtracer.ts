@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { calculateTurnCost } from "../../core/src/token-pricing.ts";
 import type { CostBreakdown } from "../../core/src/token-pricing.ts";
+import type { ModelUsage } from "../../core/src/session-usage.ts";
 
 export interface ReconstructedTurn {
   turnIndex: number;
@@ -197,52 +198,99 @@ function describeSession(turns: ReconstructedTurn[], totalTokens: number, totalC
   return `${turns.length} ${turnWord}, ${totalTokens} tokens, $${totalCostUsd.toFixed(4)}; ${tools.size} distinct tools used, ${files.size} files touched.`;
 }
 
-export function parseClaudeTranscript(content: string, sessionId?: string): ReconstructedSession {
+/** Reads a Claude Code transcript one line at a time, so a large file never has to sit in memory as one string. */
+export interface ClaudeTranscriptAccumulator {
+  addLine(line: string): void;
+  finish(): ReconstructedSession;
+}
+
+export function createClaudeTranscriptAccumulator(sessionId?: string): ClaudeTranscriptAccumulator {
   const drafts: TurnDraft[] = [];
   let current: TurnDraft | undefined;
 
-  for (const line of content.split(/\r?\n/)) {
-    const record = parseLine(line);
-    if (!record) continue;
-
-    const message = isObject(record.message) ? record.message : record;
-    const role = record.type ?? message.role;
-
-    if (role === "user") {
-      if (record.isMeta === true) continue;
-      const prompt = textOfBlocks(message.content ?? record.content);
-      if (prompt === undefined) continue;
-      current = newDraft(toTimestamp(record.timestamp), prompt);
-      drafts.push(current);
-    } else if (role === "assistant") {
-      if (!current) {
-        current = newDraft(toTimestamp(record.timestamp));
-        drafts.push(current);
-      }
-      recordAssistant(current, {
-        ...message,
-        content: message.content ?? record.content,
-        usage: message.usage ?? record.usage,
-        model: message.model ?? record.model,
-      });
-    }
-  }
-
-  const turns = drafts.map((draft, index) => finishTurn(draft, index));
-  const totalTokens = turns.reduce((sum, t) => sum + t.cost.totalTokens, 0);
-  const totalCostUsd = Math.round(turns.reduce((sum, t) => sum + t.cost.costUsd, 0) * 1e4) / 1e4;
-  const id = sessionId ?? DEFAULT_SESSION_ID;
-
   return {
-    sessionId: id,
-    agentType: "claude-code",
-    transcriptPath: id,
-    turns,
-    totalTurns: turns.length,
-    totalTokens,
-    totalCostUsd,
-    summary: describeSession(turns, totalTokens, totalCostUsd),
+    addLine(line: string): void {
+      const record = parseLine(line);
+      if (!record) return;
+
+      const message = isObject(record.message) ? record.message : record;
+      const role = record.type ?? message.role;
+
+      if (role === "user") {
+        if (record.isMeta === true) return;
+        const prompt = textOfBlocks(message.content ?? record.content);
+        if (prompt === undefined) return;
+        current = newDraft(toTimestamp(record.timestamp), prompt);
+        drafts.push(current);
+      } else if (role === "assistant") {
+        if (!current) {
+          current = newDraft(toTimestamp(record.timestamp));
+          drafts.push(current);
+        }
+        recordAssistant(current, {
+          ...message,
+          content: message.content ?? record.content,
+          usage: message.usage ?? record.usage,
+          model: message.model ?? record.model,
+        });
+      }
+    },
+
+    finish(): ReconstructedSession {
+      const turns = drafts.map((draft, index) => finishTurn(draft, index));
+      const totalTokens = turns.reduce((sum, t) => sum + t.cost.totalTokens, 0);
+      const totalCostUsd = Math.round(turns.reduce((sum, t) => sum + t.cost.costUsd, 0) * 1e4) / 1e4;
+      const id = sessionId ?? DEFAULT_SESSION_ID;
+
+      return {
+        sessionId: id,
+        agentType: "claude-code",
+        transcriptPath: id,
+        turns,
+        totalTurns: turns.length,
+        totalTokens,
+        totalCostUsd,
+        summary: describeSession(turns, totalTokens, totalCostUsd),
+      };
+    },
   };
+}
+
+export function parseClaudeTranscript(content: string, sessionId?: string): ReconstructedSession {
+  const accumulator = createClaudeTranscriptAccumulator(sessionId);
+  for (const line of content.split(/\r?\n/)) accumulator.addLine(line);
+  return accumulator.finish();
+}
+
+/**
+ * Totals per model, built from the parser's own turns so a stored cost always equals what `backtrace` shows.
+ * Holds model names and numbers only: no prompt, reply or file name leaves this function.
+ */
+export function usageByModel(session: ReconstructedSession): ModelUsage[] {
+  const byModel = new Map<string, ModelUsage>();
+  for (const { cost } of session.turns) {
+    if (cost.totalTokens === 0) continue;
+    const row = byModel.get(cost.model) ?? {
+      model: cost.model,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUsd: 0,
+      unknownModel: cost.unknownModel === true,
+      turns: 0,
+    };
+    row.inputTokens += cost.inputTokens;
+    row.outputTokens += cost.outputTokens;
+    row.cacheReadTokens += cost.cacheReadTokens;
+    row.cacheCreationTokens += cost.cacheWriteTokens;
+    row.costUsd += cost.costUsd;
+    row.turns += 1;
+    byModel.set(cost.model, row);
+  }
+  return [...byModel.values()]
+    .map((row) => ({ ...row, costUsd: Math.round(row.costUsd * 1e6) / 1e6 }))
+    .sort((a, b) => (a.model < b.model ? -1 : a.model > b.model ? 1 : 0));
 }
 
 function collectJsonl(dir: string, found: string[]): void {

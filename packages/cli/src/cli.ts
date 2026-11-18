@@ -155,7 +155,7 @@ export async function runCli(args: string[]): Promise<number> {
     case "help":
     default: {
       console.log(`
-AI Development Control Plane (@ctrlplane) v0.2.0
+AI Development Control Plane (@ctrlplane) v0.3.0
 
 USAGE:
   ctrlplane <command> [options]

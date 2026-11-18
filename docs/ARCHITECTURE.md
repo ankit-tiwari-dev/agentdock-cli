@@ -28,19 +28,19 @@ The daemon is an optimisation, not a dependency. Without it every hook still app
 
 Dependencies only point downwards. `core` depends on nothing, and `cli` sits on top.
 
-| Package          | What it owns                                                                                                                                                   | Depends on                           |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `core`           | Shared types: hook payloads, events, sessions, verdicts, IPC messages, tool names, model pricing                                                               | nothing                              |
-| `storage`        | SQLite database (`node:sqlite`): events, sessions, context entries, project memory with full-text search; secret redaction; gzip blob store for large payloads | core                                 |
-| `git-analyzer`   | Diff parsing, file classification, test-tamper detection, per-turn commit trailers                                                                             | core                                 |
-| `intent`         | The project spec (`.ctrlplane/spec.md`): template, parser, approval                                                                                            | core, storage                        |
-| `policy-engine`  | Rule catalog, layered config (user < project < local), pause, loop breaker, evaluator                                                                          | core, git-analyzer                   |
-| `context`        | Prompt intents, session summaries, handoffs, capability inventory, the SessionStart context pack                                                               | core, storage, intent, policy-engine |
-| `daemon`         | Per-project supervisor process, IPC server, lock file                                                                                                          | core, storage, policy-engine         |
-| `agent-adapters` | Per-agent payload normalizers, hook install/uninstall, hook client, transcript backtracer                                                                      | core, daemon                         |
-| `verifier`       | Deterministic checks plus the criteria audit against the spec                                                                                                  | core, git-analyzer, intent           |
-| `explanation`    | Diff explanation, blast radius, comprehension quiz, prompt coach                                                                                               | core, git-analyzer                   |
-| `cli`            | The `ctrlplane` command and the hook entry point; the supervisor provider settings file and OS keychain access (`ctrlplane supervisor`)                        | all of the above                     |
+| Package          | What it owns                                                                                                                                                                            | Depends on                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `core`           | Shared types: hook payloads, events, sessions, verdicts, IPC messages, tool names, model pricing                                                                                        | nothing                                      |
+| `storage`        | SQLite database (`node:sqlite`): events, sessions, per-model session usage, context entries, project memory with full-text search; secret redaction; gzip blob store for large payloads | core                                         |
+| `git-analyzer`   | Diff parsing, file classification, test-tamper detection, per-turn commit trailers                                                                                                      | core                                         |
+| `intent`         | The project spec (`.ctrlplane/spec.md`): template, parser, approval                                                                                                                     | core, storage                                |
+| `policy-engine`  | Rule catalog, layered config (user < project < local), pause, loop breaker, evaluator                                                                                                   | core, git-analyzer                           |
+| `context`        | Prompt intents, session summaries, handoffs, capability inventory, the SessionStart context pack                                                                                        | core, storage, intent, policy-engine         |
+| `daemon`         | Per-project supervisor process, IPC server, lock file, Claude Code cost after Stop (D-14)                                                                                               | core, storage, policy-engine, agent-adapters |
+| `agent-adapters` | Per-agent payload normalizers, hook install/uninstall, hook client, transcript backtracer                                                                                               | core, daemon                                 |
+| `verifier`       | Deterministic checks plus the criteria audit against the spec                                                                                                                           | core, git-analyzer, intent                   |
+| `explanation`    | Diff explanation, blast radius, comprehension quiz, prompt coach                                                                                                                        | core, git-analyzer                           |
+| `cli`            | The `ctrlplane` command and the hook entry point; the supervisor provider settings file and OS keychain access (`ctrlplane supervisor`)                                                 | all of the above                             |
 
 ## Where state lives
 
