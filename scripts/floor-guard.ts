@@ -39,7 +39,9 @@ function must(value: string | null, message: string): string {
 }
 
 const CODE_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
-const TEST_FILE = /(^|\/)tests?\/|\.(test|spec)\.[cm]?[jt]sx?$/;
+const TEST_DIR = /(^|\/)tests?\//;
+const TEST_NAME = /\.(test|spec)\.[cm]?[jt]sx?$/;
+const isTestFile = (file: string): boolean => TEST_DIR.test(file) || TEST_NAME.test(file);
 const CONSTRAINTS_FILE = /(^|\/)CONSTRAINTS\.md$/;
 const EXCEPTION_ROW = /^\| *[WE]\d+ *\|/;
 // A known-violations baseline is an exception list too: growing it silences the architecture check.
@@ -164,7 +166,7 @@ export function findFloorViolations(diff: string, ignored: (file: string) => boo
     if (CODE_FILE.test(file)) {
       if (SUPPRESSIONS.test(text)) flag("silenced-checker", file, text);
       if (STUBS.test(text)) flag("unfinished-work", file, text);
-      if (TEST_FILE.test(file) && SKIPS.test(text)) flag("test-made-easier", file, text);
+      if (isTestFile(file) && SKIPS.test(text)) flag("test-made-easier", file, text);
     }
     if (adopting) continue;
     if (KNOWN_VIOLATIONS_FILE.test(file) && /"from"\s*:/.test(text)) flag("baseline-grown", file, text);
@@ -177,14 +179,14 @@ export function findFloorViolations(diff: string, ignored: (file: string) => boo
   }
 
   for (const file of deleted) {
-    if (!ignored(file) && CODE_FILE.test(file) && TEST_FILE.test(file)) flag("test-deleted", file, "file deleted");
+    if (!ignored(file) && CODE_FILE.test(file) && isTestFile(file)) flag("test-deleted", file, "file deleted");
   }
   // A rewritten assertion removes one line and adds another; only a net loss per test file lowers the bar.
   const isAssertion = (l: Line) =>
     !ignored(l.file) &&
     !deleted.includes(l.file) &&
     CODE_FILE.test(l.file) &&
-    TEST_FILE.test(l.file) &&
+    isTestFile(l.file) &&
     ASSERTION.test(l.text);
   const addedAssertions = new Map<string, number>();
   for (const l of added.filter(isAssertion)) addedAssertions.set(l.file, (addedAssertions.get(l.file) ?? 0) + 1);
