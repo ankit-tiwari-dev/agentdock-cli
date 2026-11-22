@@ -51,6 +51,16 @@ node packages/cli/src/bin.ts status
 
 `init` creates `.ctrlplane/spec.md` and adds the hooks to the agent's settings without touching your other hooks.
 
+### From a release
+
+Each [GitHub Release](https://github.com/ankit-tiwari-dev/agentdock-cli/releases) holds a source archive, its `SHA256SUMS` and a signed build-provenance attestation. Check that the archive was built by this repo's release workflow before unpacking it:
+
+```bash
+gh attestation verify agentdock-cli-v<version>.tar.gz -R ankit-tiwari-dev/agentdock-cli
+```
+
+Then unpack it and run the `node packages/cli/src/bin.ts` commands above inside the folder. The shipped code has no third-party runtime dependencies, so Node is the whole install (`docs/DECISIONS.md` → D-8).
+
 ### Everyday commands
 
 ```bash

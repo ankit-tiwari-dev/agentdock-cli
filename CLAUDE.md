@@ -83,3 +83,13 @@ Never merge, approve, push, tag or post on GitHub without the developer's yes.
 - One sentence. Prefer a clear name over a comment.
 - Never narrate the change ("added", "now", "fixed") in a comment. That belongs in the commit message.
 - Keep useful existing comments.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in this repo's GitHub Issues (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` at the repo root; decisions go in `docs/DECISIONS.md` (D-N), not `docs/adr/`. See `docs/agents/domain.md`.

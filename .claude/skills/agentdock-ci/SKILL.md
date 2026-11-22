@@ -29,7 +29,7 @@ make ci > ci.log 2>&1; echo "make ci rc=$?"
 
 ## Releases
 
-Pushing a tag `v*` runs `release.yml`: the CI and security workflows again, then a check that the tag equals `v` + the `version` in the root `package.json`, then a source archive with `SHA256SUMS` published as a GitHub Release. Bump the version in the same pull request, never re-push or move an existing tag, and only tag after the owner says yes.
+Pushing a tag `v*` runs `release.yml`: the CI and security workflows again, then a check that the tag equals `v` + the `version` in the root `package.json`, then a source archive with `SHA256SUMS` and a signed build-provenance attestation, published as a GitHub Release. The attestation step needs the job's `id-token: write` and `attestations: write`; only that job has them. Bump the version in the same pull request, never re-push or move an existing tag, and only tag after the owner says yes.
 
 ## Six machines, one laptop
 
