@@ -87,3 +87,20 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Decision:** `CONSTRAINTS.md` lists every check that decides whether a change can merge, with its number, the command that produces the verdict and where it runs. The coverage gate and the hook-latency check read their numbers from it, so a number is written in one place. A floor of moves that lower the bar (new suppression comments, stubs, skipped or deleted tests, removed assertions, a loosened threshold or a new exception) is checked on the diff after every agent edit and in CI, and blocks from the start. Changed-line coverage, architecture (dependency-cruiser, a dev dependency) and hook latency warn until 2026-12-05 and block after it. `.claude/settings.json` runs the floor after each edit and the task-end checks when an agent stops with uncommitted code changes.
 - **Why:** agents write more code than anyone reads line by line, so the bar has to live in checks that run inside their loop, with numbers chosen once instead of argued per PR. A threshold read from the file that documents it cannot drift from its documentation. Two weeks of warnings let the numbers, measured on one Windows machine, be checked against CI before they cost a red build; D-9's rule that every check blocks applies once the window ends.
 - **Cost:** CI's `constraints` job runs the suite a second time with coverage, and checks out the full history for the merge base. dependency-cruiser joins the dev dependencies that osv-scanner and Dependabot watch. The floor guard is a set of regular expressions: it catches the cheap ways to turn a check green, not a determined attempt to hide a change.
+
+## D-16 · A repo's own config can only tighten supervision
+
+- **Decision:**
+  - `.ctrlplane/policies.json`, the project file committed with the repo, can only tighten a rule. Turning a rule off, setting it to observe, or giving it a less strict action is ignored with a warning, and `policies disable|observe` write to `policies.local.json` instead.
+  - `customRulesFile` is read only from `$CTRLPLANE_HOME/policies.json`, and only as a real path inside `CTRLPLANE_HOME`.
+  - A relative `CTRLPLANE_HOME` is refused.
+  - A daemon control frame is built only by `sendDaemonControl`, and shutdown needs the token the daemon writes into `daemon.lock` at each start.
+- **Why:** a cloned repo, or an agent that writes its config, decides what that file says. Before this:
+  - the repo could switch off the secret-read and destructive-shell rules (ISSUE.md I-62);
+  - it could run its own code in the hook and the daemon (I-61);
+  - it could point user state into the project (I-67);
+  - and an agent could stop the daemon through its own hook payload (I-63).
+- **Cost:**
+  - A team can no longer ship a softer rule set in the repo; each developer sets it in `policies.local.json` or their user config.
+  - Custom rules move to the user config.
+  - Params such as allow lists can still be set from the project file.
