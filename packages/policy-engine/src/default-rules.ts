@@ -56,31 +56,70 @@ const AGENT_HOOK_DIRS: readonly string[] = Object.freeze([
 
 const HOOK_CONFIG_PATHS = [...AGENT_HOOK_CONFIG_FILES, ...AGENT_HOOK_DIRS];
 
+/** Whether an agent may run a `ctrlplane` command: never, always, or only some of its sub-commands. */
+export type CommandSafety = "safe" | "off-switch" | { offSwitch: readonly string[] } | { safeOnly: readonly string[] };
+
+/**
+ * Every `ctrlplane` command, with the sub-commands an agent must never run on itself: they stop, pause,
+ * weaken or uninstall supervision (`init` can rewrite the hooks), write what the next session is told
+ * (`handoff`, `memory add`) or treats as approved (`spec approve`), or choose where code and keys are sent
+ * (`supervisor use|set-key|remove-key`). Both off-switch checks below are built from this table, and
+ * `packages/cli/tests/command-safety.test.ts` fails when `cli.ts` has a command this table does not list.
+ */
+export const CLI_COMMAND_SAFETY: Readonly<Record<string, CommandSafety>> = {
+  init: "off-switch",
+  stop: "off-switch",
+  pause: "off-switch",
+  uninstall: "off-switch",
+  policies: { offSwitch: ["disable", "off", "observe", "set"] },
+  memory: { offSwitch: ["add", "rm"] },
+  spec: { offSwitch: ["approve"] },
+  supervisor: { offSwitch: ["set-key", "remove-key", "use"] },
+  handoff: { safeOnly: ["show"] },
+  resume: "safe",
+  context: "safe",
+  capabilities: "safe",
+  start: "safe",
+  status: "safe",
+  "daemon-run": "safe",
+  verify: "safe",
+  explain: "safe",
+  audit: "safe",
+  coach: "safe",
+  backtrace: "safe",
+  commit: "safe",
+  cost: "safe",
+  hook: "safe",
+  help: "safe",
+};
+
+function offSwitchPattern(): string {
+  const alternatives = Object.entries(CLI_COMMAND_SAFETY).flatMap(([name, safety]) => {
+    if (safety === "safe") return [];
+    if (safety === "off-switch") return [name];
+    if ("offSwitch" in safety) return [String.raw`${name}\s+(?:${safety.offSwitch.join("|")})`];
+    return [String.raw`${name}(?!\s+(?:${safety.safeOnly.join("|")})\b)`];
+  });
+  return `(?:${alternatives.join("|")})\\b`;
+}
+
 // Raw-text match, kept for an off-switch typed inside another program's string
-// (`node -e "execSync('ctrlplane stop')"`). Memory is injected into every future session,
-// so only the developer may write it.
-const OFF_SWITCH_VERBS = String.raw`(?:stop|pause|uninstall|policies\s+(?:disable|off|observe|set)|memory\s+(?:add|rm)|supervisor\s+(?:set-key|remove-key|use))\b`;
+// (`node -e "execSync('ctrlplane stop')"`), where the shell parser cannot see the words.
+const OFF_SWITCH_VERBS = offSwitchPattern();
 const SUPERVISOR_OFF_SWITCH = new RegExp(
   String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${OFF_SWITCH_VERBS}|\bbin\.ts["']?\s+${OFF_SWITCH_VERBS}`,
   "i",
 );
 
-/**
- * `ctrlplane` sub-commands an agent must never run on itself: they stop, pause, weaken or
- * uninstall supervision (`init` can rewrite the hooks), or write what the next session is told
- * (`handoff`, `memory add`) or treats as approved (`spec approve`). `supervisor use|set-key|remove-key`
- * choose where code and keys are sent, so only the developer runs them. `words` exclude options.
- */
+/** True when `words` (the command after `ctrlplane`, options removed) is an off-switch in CLI_COMMAND_SAFETY. */
 function isOffSwitch(words: string[]): boolean {
   const [a, b] = words.map((w) => w.toLowerCase());
   if (a === undefined) return false;
-  if (a === "stop" || a === "pause" || a === "uninstall" || a === "init") return true;
-  if (a === "policies") return b === "disable" || b === "off" || b === "observe" || b === "set";
-  if (a === "memory") return b === "add" || b === "rm";
-  if (a === "handoff") return b !== "show";
-  if (a === "spec") return b === "approve";
-  if (a === "supervisor") return b === "set-key" || b === "remove-key" || b === "use";
-  return false;
+  const safety = Object.hasOwn(CLI_COMMAND_SAFETY, a) ? CLI_COMMAND_SAFETY[a] : undefined;
+  if (safety === undefined || safety === "safe") return false;
+  if (safety === "off-switch") return true;
+  if ("offSwitch" in safety) return b !== undefined && safety.offSwitch.includes(b);
+  return b === undefined || !safety.safeOnly.includes(b);
 }
 
 const CLI_PACKAGE = /@ctrlplane\/cli(?:@[\w.-]+)?$/i;
