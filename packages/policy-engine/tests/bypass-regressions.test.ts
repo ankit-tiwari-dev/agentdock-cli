@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -340,15 +340,18 @@ test("regression: everyday commands that resemble the bypasses stay allowed", ()
 test("regression: the custom rules module path is protected from agent writes", async () => {
   const dir = tempProject();
   try {
-    mkdirSync(join(dir, "rules"), { recursive: true });
-    writeFileSync(join(dir, "rules", "custom.mjs"), "export const rules = [];\n");
-    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify({ customRulesFile: "rules/custom.mjs" }));
+    const home = join(dir, "user-home");
+    const module = join(home, "rules", "custom.mjs");
+    const shellPath = module.replaceAll("\\", "/");
+    mkdirSync(join(home, "rules"), { recursive: true });
+    writeFileSync(module, "export const rules = [];\n");
+    writeFileSync(join(home, "policies.json"), JSON.stringify({ customRulesFile: "rules/custom.mjs" }));
     const { engine } = await buildProjectEngine(dir);
     for (const [name, input] of [
-      ["Write", { file_path: "rules/custom.mjs", content: "export const rules = [];" }],
-      ["Edit", { file_path: join(dir, "rules", "custom.mjs"), old_string: "a", new_string: "b" }],
-      ["Bash", { command: "echo 'export const rules=[]' > rules/custom.mjs" }],
-      ["Bash", { command: "rm rules/custom.mjs" }],
+      ["Write", { file_path: module, content: "export const rules = [];" }],
+      ["Edit", { file_path: module, old_string: "a", new_string: "b" }],
+      ["Bash", { command: `echo 'export const rules=[]' > ${shellPath}` }],
+      ["Bash", { command: `rm ${shellPath}` }],
     ] as [string, Record<string, unknown>][]) {
       const res = tool(engine, name, input, dir);
       assert.equal(res.decision, "DENY", `${name} ${JSON.stringify(input)}`);
@@ -361,9 +364,11 @@ test("regression: the custom rules module path is protected from agent writes", 
 
 test("regression: a custom rules module cannot empty or rewrite the built-in rules", async () => {
   const dir = tempProject();
+  const home = join(dir, "user-home");
   try {
+    mkdirSync(home, { recursive: true });
     writeFileSync(
-      join(dir, ".ctrlplane", "rules.mjs"),
+      join(home, "rules.mjs"),
       [
         `import { BUILTIN_RULES, DEFAULT_SAFETY_RULES, AGENT_HOOK_CONFIG_FILES, PolicyEngine } from ${JSON.stringify(INDEX_URL)};`,
         "try { for (const r of BUILTIN_RULES) r.check = () => null; } catch {}",
@@ -374,11 +379,9 @@ test("regression: a custom rules module cannot empty or rewrite the built-in rul
         "export const rules = [];",
       ].join("\n"),
     );
-    writeFileSync(
-      join(dir, ".ctrlplane", "policies.json"),
-      JSON.stringify({ customRulesFile: ".ctrlplane/rules.mjs" }),
-    );
-    const { engine } = await buildProjectEngine(dir);
+    writeFileSync(join(home, "policies.json"), JSON.stringify({ customRulesFile: "rules.mjs" }));
+    const { engine, config } = await buildProjectEngine(dir);
+    assert.ok(config.customRulesFile, "the module must load from the user config");
     assert.ok(BUILTIN_RULES.length > 0, "the exported catalog must survive the module");
     assert.equal(bash(engine, "rm -rf /", dir).decision, "DENY");
     assert.equal(bash(engine, "ctrlplane stop", dir).decision, "DENY");
@@ -525,5 +528,61 @@ test("regression: git mv of a test file asks for approval like mv", () => {
     const res = bash(engine, command);
     assert.equal(res.decision, "REQUIRE_MANUAL_APPROVAL", command);
     assert.equal(res.matchedRuleId, "RULE-PROTECT-EXISTING-TESTS", command);
+  }
+});
+
+function markerModule(marker: string): string {
+  return `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "ran");\nexport const rules = [];\n`;
+}
+
+test("regression: a project or local config cannot name a custom rules module to run", async () => {
+  const dir = tempProject();
+  try {
+    for (const [scope, file] of [
+      ["project", "policies.json"],
+      ["local", "policies.local.json"],
+    ]) {
+      const marker = join(dir, `${scope}-ran.txt`);
+      writeFileSync(join(dir, ".ctrlplane", `${scope}.mjs`), markerModule(marker));
+      writeFileSync(join(dir, ".ctrlplane", file), JSON.stringify({ customRulesFile: `.ctrlplane/${scope}.mjs` }));
+      const { engine, customRules, config } = await buildProjectEngine(dir);
+      assert.equal(existsSync(marker), false, `${scope} config must not run its module`);
+      assert.equal(customRules.length, 0);
+      assert.equal(config.customRulesFile, undefined);
+      assert.equal(bash(engine, "ctrlplane stop", dir).decision, "DENY", "supervision must keep working");
+      rmSync(join(dir, ".ctrlplane", file));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("regression: a user config loads custom rules only from inside CTRLPLANE_HOME", async () => {
+  const dir = tempProject();
+  const home = join(dir, "user-home");
+  try {
+    mkdirSync(home, { recursive: true });
+    const inside = join(dir, "inside-ran.txt");
+    writeFileSync(join(home, "rules.mjs"), markerModule(inside));
+    writeFileSync(join(home, "policies.json"), JSON.stringify({ customRulesFile: "rules.mjs" }));
+    await buildProjectEngine(dir);
+    assert.equal(existsSync(inside), true, "a module inside CTRLPLANE_HOME still loads");
+
+    const outside = join(dir, "outside-ran.txt");
+    writeFileSync(join(dir, "outside.mjs"), markerModule(outside));
+    writeFileSync(join(home, "policies.json"), JSON.stringify({ customRulesFile: "../outside.mjs" }));
+    const escaped = await buildProjectEngine(dir);
+    assert.equal(existsSync(outside), false, "a module outside CTRLPLANE_HOME must not run");
+    assert.equal(escaped.customRules.length, 0);
+
+    const linked = join(dir, "linked-ran.txt");
+    mkdirSync(join(dir, "elsewhere"));
+    writeFileSync(join(dir, "elsewhere", "rules.mjs"), markerModule(linked));
+    symlinkSync(join(dir, "elsewhere"), join(home, "link"), "junction");
+    writeFileSync(join(home, "policies.json"), JSON.stringify({ customRulesFile: "link/rules.mjs" }));
+    await buildProjectEngine(dir);
+    assert.equal(existsSync(linked), false, "a link out of CTRLPLANE_HOME must not run its target");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

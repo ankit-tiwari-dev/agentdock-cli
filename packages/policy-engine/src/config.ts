@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PolicyAction, PolicyMode, PolicyRule } from "../../core/src/index.ts";
 import type { RuleOverride } from "./evaluator.ts";
@@ -9,7 +9,7 @@ import { ctrlplaneHome, pauseStatePath, projectPolicyPath } from "../../core/src
 export interface PolicyConfigFile {
   version?: number;
   rules?: Record<string, RuleOverride>;
-  /** Module exporting `rules: PolicyRule[]`, relative to the project root. */
+  /** Module exporting `rules: PolicyRule[]`, relative to `CTRLPLANE_HOME`; honoured only in the user config. */
   customRulesFile?: string;
   loopBreaker?: {
     maxConsecutiveFailures?: number;
@@ -54,6 +54,36 @@ function readConfigFile(path: string): PolicyConfigFile | null {
   }
 }
 
+const warned = new Set<string>();
+
+function warnOnce(message: string): void {
+  if (warned.has(message)) return;
+  warned.add(message);
+  process.stderr.write(`[ctrlplane policy] ${message}\n`);
+}
+
+function isInside(dir: string, file: string): boolean {
+  const rel = relative(dir, file);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+/** Real path of the user config's custom rules module, or undefined when it resolves outside `CTRLPLANE_HOME`. */
+function userCustomRulesFile(configFile: string, name: string): string | undefined {
+  const target = resolve(dirname(configFile), name);
+  let inside: boolean;
+  let file = target;
+  try {
+    file = realpathSync(target);
+    inside = isInside(realpathSync(ctrlplaneHome()), file);
+  } catch {
+    // A module that does not exist yet loads nothing, but its path stays protected from agent writes.
+    inside = isInside(resolve(ctrlplaneHome()), target);
+  }
+  if (inside) return file;
+  warnOnce(`${configFile}: customRulesFile ${name} resolves outside ${ctrlplaneHome()} and is ignored.`);
+  return undefined;
+}
+
 const VALID_MODES: PolicyMode[] = ["enforce", "observe"];
 const VALID_ACTIONS: PolicyAction[] = ["ALLOW", "DENY", "INSTRUCT", "REQUIRE_MANUAL_APPROVAL"];
 
@@ -83,9 +113,12 @@ export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
       const prev = resolved.overrides[id] ?? {};
       resolved.overrides[id] = { ...prev, ...o, params: { ...(prev.params ?? {}), ...(o.params ?? {}) } };
     }
-    if (file.customRulesFile && scope !== "user") resolved.customRulesFile = resolve(projectRoot, file.customRulesFile);
+    if (file.customRulesFile && scope !== "user")
+      warnOnce(
+        `${path}: customRulesFile ignored; custom rules belong in the user config ${configPath(projectRoot, "user")}.`,
+      );
     if (file.customRulesFile && scope === "user")
-      resolved.customRulesFile = resolve(dirname(path), file.customRulesFile);
+      resolved.customRulesFile = userCustomRulesFile(path, file.customRulesFile);
     Object.assign(resolved.loopBreaker, file.loopBreaker ?? {});
     Object.assign(resolved.context, file.context ?? {});
     Object.assign(resolved.budget, file.budget ?? {});

@@ -200,16 +200,15 @@ test("always-on rules ignore disable and observe overrides", async () => {
 
 test("custom rules load after the built-ins and cannot reuse a built-in id", async () => {
   const dir = tempProject();
+  const home = join(dir, "user-home");
   try {
+    mkdirSync(home, { recursive: true });
     writeFileSync(
-      join(dir, ".ctrlplane", "rules.mjs"),
+      join(home, "rules.mjs"),
       `export const rules = [{ id: "TEAM-NO-YARN", name: "Use pnpm", event: "PreToolUse", targetTools: ["Bash"], action: "INSTRUCT", message: "Use pnpm.",
         check: (ctx) => ctx.subCommands.some((s) => /^yarn\\b/.test(s)) ? { message: "This repo uses pnpm." } : null }];`,
     );
-    writeFileSync(
-      join(dir, ".ctrlplane", "policies.json"),
-      JSON.stringify({ customRulesFile: ".ctrlplane/rules.mjs" }),
-    );
+    writeFileSync(join(home, "policies.json"), JSON.stringify({ customRulesFile: "rules.mjs" }));
     const project = await buildProjectEngine(dir);
     assert.equal(project.customRules.length, 1);
     const res = bash(project.engine, "yarn add left-pad", dir);
@@ -217,13 +216,10 @@ test("custom rules load after the built-ins and cannot reuse a built-in id", asy
     assert.equal(res.matchedRuleId, "TEAM-NO-YARN");
 
     writeFileSync(
-      join(dir, ".ctrlplane", "clash.mjs"),
+      join(home, "clash.mjs"),
       `export const rules = [{ id: "RULE-ASK-SUDO", name: "x", event: "PreToolUse", action: "ALLOW", message: "x" }];`,
     );
-    writeFileSync(
-      join(dir, ".ctrlplane", "policies.json"),
-      JSON.stringify({ customRulesFile: ".ctrlplane/clash.mjs" }),
-    );
+    writeFileSync(join(home, "policies.json"), JSON.stringify({ customRulesFile: "clash.mjs" }));
     await assert.rejects(buildProjectEngine(dir), /collides with a built-in rule/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
