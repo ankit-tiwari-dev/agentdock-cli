@@ -32,7 +32,7 @@ No row, the wrong verdict, the wrong `rule_id`, or an unredacted secret each poi
 echo '<payload>' | node "$R/packages/cli/src/bin.ts" hook PreToolUse --agent claude-code > out.txt 2> err.txt; echo "rc=$?"
 ```
 
-Compare with the table of verdicts and exit codes in that skill. `[ctrlplane hook error]` on stderr means the hook threw.
+Compare with the table of verdicts and exit codes in that skill. `[ctrlplane hook error]` on stderr means the hook threw and blocked the call; `[ctrlplane warning]` means it threw on another event, or while paused, and let it through.
 
 **What the daemon did.** In the affected project, read `.ctrlplane/daemon.lock` (PID and IPC address) and `.ctrlplane/daemon.log`. Check whether that PID is alive. No daemon means the hook ran the rules in its own process.
 

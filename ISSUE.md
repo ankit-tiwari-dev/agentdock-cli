@@ -328,11 +328,18 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 - **Symptoms:** since I-33, a check with no command is `NOT RUN`, and the result is at best `NEEDS_ATTENTION` with exit 1. The CLI has no way to name the test, typecheck or lint command, so every CLI run exits 1.
 - **Fix (decided, D-20):** `ctrlplane verify` and the `verifier` package are removed; AgentDock does not grade an agent's work. Closes when the removal lands. (Superseded proposal: the owner chooses where those commands are configured, for example `.ctrlplane/policies.json`.) On Windows, `runShellCommand` in `packages/verifier/src/deterministic-runner.ts` also breaks a command that contains quotes; fix it at the same time.
 
-## I-48 · FOUND · A crash in the hook still allows the tool call outside CI
+## I-48 · FIXED · A crash in the hook still allowed the tool call outside CI
 
 - **Symptoms:** an unexpected exception while evaluating PreToolUse prints `[ctrlplane hook error] ...` and exits 0, so the call runs unchecked. In CI it exits 2.
 - **Root cause:** fail-open was the original behaviour, and changing it can stop every agent action whenever the hook has a bug.
-- **Fix (decided, D-18):** `PreToolUse` fails closed locally too, with a message naming the error and `ctrlplane pause`; other hook events fail open with a `[ctrlplane warning]` line. Not implemented yet, and how the pause stays a reliable way out is still open (D-18 → Cost).
+- **Fix (D-18):**
+  - `runHook` (`packages/cli/src/commands/hook-cmd.ts`) reads the pause before parsing anything, with `activePause` (`packages/core/src/pause.ts`). That function never throws and never touches the file. `readPause` in the policy engine now wraps it, so the 8-hour ceiling has one owner.
+  - `onCrash` handles an unexpected error:
+    - `PreToolUse` exits 2, naming the redacted error and `ctrlplane pause`.
+    - While paused, and never in CI, the call goes through. `recordCrashWhilePaused` (`packages/cli/src/commands/hook-crash.ts`) records it as `ALLOW` with rule `CRASH-WHILE-PAUSED`, keeping the redacted payload, the error, and AgentDock-relative stack frames.
+    - If the redactor throws, the row keeps only the tool name, byte size, SHA-256 and error type. If the row cannot be written, one stderr line carries those fields.
+    - Other events go through with a `[ctrlplane warning]` line.
+- **Verification:** `packages/cli/tests/hook-crash.test.ts`. Three tests fail on the old `hook-cmd.ts`: the local deny, the paused allow and its row, and the malformed or expired pause. The others pin the redactor-fails row, the stderr fallback, the warning for other events, and that the early pause read leaves the file alone. `regression: an unexpected error while evaluating PreToolUse is reported, and fails closed locally and in CI` (`hook-hardening.test.ts`) now expects exit 2 locally too.
 
 ## I-49 · FIXED · Regexes on agent input backtracked quadratically and could overrun the hook's 1500 ms budget
 

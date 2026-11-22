@@ -4,7 +4,14 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PolicyAction, PolicyMode, PolicyRule } from "../../core/src/index.ts";
 import type { RuleOverride } from "./evaluator.ts";
-import { ctrlplaneHome, pauseStatePath, projectPolicyPath } from "../../core/src/index.ts";
+import {
+  activePause,
+  ctrlplaneHome,
+  pauseStatePath,
+  projectPolicyPath,
+  PAUSE_CEILING_MS,
+  type PauseState,
+} from "../../core/src/index.ts";
 import { BUILTIN_RULES } from "./catalog.ts";
 
 export interface PolicyConfigFile {
@@ -226,39 +233,17 @@ export const DEFAULT_PROJECT_CONFIG: PolicyConfigFile = {
 // Pause: a time-boxed "supervision off" switch for the developer (never the agent).
 
 export const PAUSE_DEFAULT_MS = 30 * 60 * 1000;
-export const PAUSE_CEILING_MS = 8 * 60 * 60 * 1000;
-
-export interface PauseState {
-  firstPausedAt: number;
-  until: number;
-}
+export { PAUSE_CEILING_MS, type PauseState } from "../../core/src/index.ts";
 
 function pausePath(projectRoot: string): string {
   return pauseStatePath(projectRoot);
 }
 
-/**
- * Active pause, or null. Expiry is checked when read; an expired file is removed. The 8-hour
- * ceiling is applied here too, so a hand-edited file cannot pause supervision for longer; a file
- * without a valid start time cannot be bounded and counts as no pause.
- */
+/** Active pause, or null (see `activePause`); an expired or unreadable pause file is removed. */
 export function readPause(projectRoot: string, now = Date.now()): PauseState | null {
-  const path = pausePath(projectRoot);
-  if (!existsSync(path)) return null;
-  try {
-    const state = JSON.parse(readFileSync(path, "utf8")) as Partial<PauseState> | null;
-    const first = state?.firstPausedAt;
-    const until = state?.until;
-    const valid = typeof first === "number" && Number.isFinite(first) && first <= now && typeof until === "number";
-    const capped = valid ? Math.min(until, first + PAUSE_CEILING_MS) : 0;
-    if (!valid || capped <= now) {
-      rmSync(path, { force: true });
-      return null;
-    }
-    return { firstPausedAt: first, until: capped };
-  } catch {
-    return null;
-  }
+  const state = activePause(projectRoot, now);
+  if (!state) rmSync(pausePath(projectRoot), { force: true });
+  return state;
 }
 
 /**

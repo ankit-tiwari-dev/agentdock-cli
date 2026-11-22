@@ -11,3 +11,4 @@ export * from "./session-usage.ts";
 export * from "./tool-canonicalizer.ts";
 export * from "./hook-payload.ts";
 export * from "./paths.ts";
+export * from "./pause.ts";
