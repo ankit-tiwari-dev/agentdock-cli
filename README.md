@@ -28,13 +28,27 @@ Package layout, state paths and the full request flow: [`docs/ARCHITECTURE.md`](
 ## What it does
 
 - **Guards destructive and risky commands.** It blocks recursive deletes, force pushes, hard resets and reads of credential files (`.env`, `*.pem`, `~/.ssh`), and offers 25 more rules you can switch on, off or to observe-only.
-- **Stops agents switching supervision off.** Edits to the agent's own hook settings, and commands that stop, pause, weaken or uninstall AgentDock, are denied.
+- **Stops agents switching supervision off.** Edits to the agent's own hook settings, and commands that stop, pause, weaken or uninstall AgentDock or kill its daemon, are denied. Killing every Node process asks you first.
 - **Protects tests.** Changes that delete or weaken existing test assertions are blocked.
 - **Breaks loops.** When the same command fails the same way three times in a row, the next call needs human approval.
 - **Carries context between sessions.** It records what you asked for, summarises each session, and keeps handoff notes and project memory. A new session then starts with a short context pack.
 - **Verifies against a spec.** It runs deterministic checks plus an audit of each acceptance criterion in `.ctrlplane/spec.md`, which needs file-and-line evidence.
 - **Explains a diff.** It shows changed symbols, blast radius, dependency changes and a short comprehension quiz.
 - **Tracks cost.** It shows token and dollar cost per turn from local Claude Code transcripts, a per-turn commit with metadata trailers, and a prompt-quality coach.
+
+## What it is not
+
+AgentDock catches an agent's mistakes and over-eager actions. It is not a sandbox against an agent that sets out to get round it. The rules are a deny-list over what the agent's tools say they will do, and a deny-list is never complete. To contain an agent you do not trust, use the operating system, a container, or your harness's own sandbox, with AgentDock inside it.
+
+Known gaps, which the rules do not try to close:
+
+- **Other ways to write or delete:** `git apply`, `rsync --delete`, `shred -u`, and git's abbreviated options (`git reset --har`).
+- **Text the shell does not parse as commands:** secrets read from inside a `python -c` or `node -e` script, and heredoc bodies.
+- **Search tools over secret files:** Grep or Glob over `.env*`.
+- **Indirect process and git control:** a daemon PID held in a variable, or git settings passed through `GIT_CONFIG_*` environment variables.
+- **Custom rules modules:** they run in the hook process, so they can change its built-ins, and the files they import are not protected.
+
+Without its daemon, AgentDock still applies every rule inside the hook. Killing the daemon switches off only the loop breaker and cost tracking, and the audit trail keeps less detail (no git branch or commit).
 
 ## Quickstart
 

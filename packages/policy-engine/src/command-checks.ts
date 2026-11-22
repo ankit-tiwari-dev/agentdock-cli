@@ -3,6 +3,7 @@ import { isAbsolute, join, posix, resolve } from "node:path";
 import {
   commandVariants,
   isDynamicWord,
+  normalizeProgram,
   peelCommand,
   splitShellSegments,
   stripCommandPrefix,
@@ -135,6 +136,133 @@ export function gitSubcommand(sub: string): { verb: string; args: string[] } | n
   }
   if (i >= t.length) return null;
   return { verb: t[i], args: t.slice(i + 1) };
+}
+
+/**
+ * Whether the command points git at another hooks folder, which skips the project's hooks as `--no-verify` does:
+ * `git config [scope] core.hooksPath <dir>`, `--unset` or `set`, or `git -c core.hooksPath=<dir> ...`.
+ * Reading the setting stays allowed.
+ */
+export function setsHooksPath(sub: string): boolean {
+  const t = argv(sub);
+  if (t[0] !== "git") return false;
+  for (let i = 1; i < t.length && t[i].startsWith("-"); i++) {
+    const opt = t[i].toLowerCase();
+    const value =
+      opt === "-c" || opt === "--config-env"
+        ? (t[i + 1] ?? "").toLowerCase()
+        : opt.replace(/^(?:-c|--config-env=)/, "");
+    if (value.startsWith("core.hookspath=")) return true;
+    if (opt === "-c" || opt === "--config-env") i++;
+  }
+  const g = gitSubcommand(sub);
+  if (!g || g.verb !== "config") return false;
+  const args = g.args.map((a) => a.toLowerCase());
+  const key = args.indexOf("core.hookspath");
+  if (key === -1) return false;
+  if (args[0] === "set" || args[0] === "unset") return true;
+  if (args.some((a) => /^--(?:unset|unset-all|replace-all|add|edit)$/.test(a))) return true;
+  if (args[0] === "get" || args.some((a) => a.startsWith("--get"))) return false;
+  return key < args.length - 1;
+}
+
+// ---------------------------------------------------------------------------
+// Stopping the AgentDock daemon
+
+/** Text that names the daemon or its lock file. */
+const DAEMON_MARK = /daemon-run|ctrlplane|daemon\.lock/i;
+const NODE_NAME = /^\^?node(?:js)?(?:\.exe)?\*?\$?$/i;
+const NODE_IN_GET_PROCESS = /\b(?:get-process|gps)\b[^|;]*\bnode(?:js)?\b/i;
+
+interface KillStage {
+  /** Process names or patterns the stage targets. */
+  names: string[];
+  /** Literal process IDs it targets. */
+  pids: number[];
+  /** Kills whatever an earlier pipeline stage hands it (`xargs kill`, a bare `Stop-Process`). */
+  piped: boolean;
+}
+
+function valueAfter(words: string[], flag: RegExp): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < words.length; i++) if (flag.test(words[i]) && words[i + 1] !== undefined) out.push(words[++i]);
+  return out;
+}
+
+const PKILL_VALUE_OPTS = new Set(["-g", "-G", "-P", "-s", "-t", "-u", "-U", "-F", "--signal", "--pidfile"]);
+
+/** What a process-killing command targets; null when the words are not one. */
+function killStage(words: string[]): KillStage | null {
+  let w = words;
+  if (normalizeProgram(w[0] ?? "") === "xargs") {
+    const at = w.findIndex((x, i) => i > 0 && !x.startsWith("-"));
+    if (at === -1) return null;
+    const inner = killStage(w.slice(at));
+    return inner && { ...inner, piped: true };
+  }
+  const prog = normalizeProgram(w[0] ?? "");
+  w = w.slice(1);
+  const numbers = (xs: string[]) => xs.filter((x) => /^\d+$/.test(x)).map(Number);
+  switch (prog) {
+    case "kill": {
+      // Signal 0 and the signal list only probe; they stop nothing.
+      if (w.some((x) => x === "-0" || x === "-l" || x === "-L") || /(?:^|\s)-s\s+0\b/.test(w.join(" "))) return null;
+      const name = valueAfter(w, /^-(?:name|processname)$/i);
+      if (name.length) return { names: name, pids: [], piped: false };
+      return { names: [], pids: numbers(w), piped: w.every((x) => x.startsWith("-")) };
+    }
+    case "pkill":
+    case "killall": {
+      const names: string[] = [];
+      for (let i = 0; i < w.length; i++) {
+        if (PKILL_VALUE_OPTS.has(w[i])) i++;
+        else if (!w[i].startsWith("-")) names.push(w[i]);
+      }
+      return { names, pids: [], piped: false };
+    }
+    case "taskkill":
+      return {
+        names: [
+          ...valueAfter(w, /^[/-]im$/i),
+          // A filter is one word like "IMAGENAME eq node.exe"; its name is the last part.
+          ...valueAfter(w, /^[/-]fi$/i).map((f) => f.trim().split(/\s+/).pop() ?? ""),
+        ],
+        pids: numbers(valueAfter(w, /^[/-]pid$/i)),
+        piped: false,
+      };
+    case "stop-process":
+    case "spps": {
+      const names = valueAfter(w, /^-(?:name|processname|n)$/i);
+      const pids = numbers([...valueAfter(w, /^-id$/i), ...w.filter((x, i) => i === 0 && /^\d+$/.test(x))]);
+      return { names, pids, piped: names.length === 0 && pids.length === 0 };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Whether the command stops the AgentDock daemon: `"daemon"` when it targets the daemon itself (by its
+ * `daemon-run` command line, its lock file or its PID), `"every-node"` when it kills every Node process and so
+ * the daemon too, null otherwise. `daemonPid` is read only when a literal PID needs checking.
+ */
+export function stopsDaemon(
+  subCommands: string[],
+  daemonPid: () => number | undefined,
+): "daemon" | "every-node" | null {
+  const whole = subCommands.join(" ; ");
+  let everyNode = false;
+  for (const sub of subCommands) {
+    for (const words of argvVariants(sub)) {
+      const stage = killStage(words);
+      if (!stage) continue;
+      if (DAEMON_MARK.test(sub) || (stage.piped && DAEMON_MARK.test(whole))) return "daemon";
+      if (stage.pids.length && stage.pids.includes(daemonPid() ?? -1)) return "daemon";
+      const names = stage.names;
+      if (names.some((n) => NODE_NAME.test(n)) || (stage.piped && NODE_IN_GET_PROCESS.test(whole))) everyNode = true;
+    }
+  }
+  return everyNode ? "every-node" : null;
 }
 
 export function isHardReset(sub: string): boolean {
@@ -586,7 +714,10 @@ function globMayReach(path: string, samples: string[]): boolean {
   const segs = path.split("/").map((seg) => shellGlobRegExp(seg));
   return samples.some((sample) => {
     const want = sample.split("/");
-    return want.length <= segs.length && want.every((seg, i) => segs[i].test(seg));
+    // A relative sample is protected at any depth, as the literal check's unanchored globs are (`sub/.ctrl*`).
+    const lastStart = /^(?:\/|[a-zA-Z]:)/.test(sample) ? 0 : segs.length - want.length;
+    for (let k = 0; k <= lastStart; k++) if (want.every((seg, i) => segs[k + i].test(seg))) return true;
+    return false;
   });
 }
 
