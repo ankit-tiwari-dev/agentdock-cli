@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   BUILTIN_RULES,
@@ -344,6 +344,34 @@ test("regression: local and user scopes may still soften, project scope may stil
     assert.equal(bash(tight, "sudo ls", dir).decision, "DENY");
     assert.equal(bash(tight, "git commit --amend --no-edit", dir).decision, "REQUIRE_MANUAL_APPROVAL");
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("regression: a relative CTRLPLANE_HOME drops the user scope and still protects the default home", () => {
+  const dir = tempProject();
+  const prevCwd = process.cwd();
+  process.env.CTRLPLANE_HOME = "user-home";
+  process.chdir(dir);
+  try {
+    mkdirSync(join(dir, "user-home"));
+    writeFileSync(
+      join(dir, "user-home", "policies.json"),
+      JSON.stringify({ rules: { "RULE-ASK-SUDO": { enabled: false } } }),
+    );
+    const config = loadPolicyConfig(dir);
+    assert.deepEqual(config.sources, []);
+    assert.equal(config.overrides["RULE-ASK-SUDO"], undefined);
+    const decision = new PolicyEngine().evaluate({
+      event: "PreToolUse",
+      toolName: "Write",
+      toolInput: { file_path: join(homedir(), ".ctrlplane", "policies.json"), content: "{}" },
+      projectRoot: dir,
+    }).decision;
+    assert.equal(decision, "DENY");
+  } finally {
+    process.chdir(prevCwd);
+    delete process.env.CTRLPLANE_HOME;
     rmSync(dir, { recursive: true, force: true });
   }
 });

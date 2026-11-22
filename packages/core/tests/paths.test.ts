@@ -17,3 +17,13 @@ test("project state paths all sit in the project's .ctrlplane folder", () => {
   assert.equal(projectPolicyPath("/p", "local"), join("/p", ".ctrlplane", "policies.local.json"));
   assert.ok(CONTEXT_EVENTS.has("SessionStart") && !CONTEXT_EVENTS.has("PreToolUse"));
 });
+
+test("regression: a relative CTRLPLANE_HOME is refused instead of resolving inside the current folder", () => {
+  // ".ctrlplane" pointed every user-scope read at <project>/.ctrlplane, a folder the agent can write.
+  for (const value of [".ctrlplane", "state", "./x", "../x"]) {
+    assert.throws(
+      () => ctrlplaneHome({ CTRLPLANE_HOME: value }, "/home/dev"),
+      /CTRLPLANE_HOME must be an absolute path/,
+    );
+  }
+});

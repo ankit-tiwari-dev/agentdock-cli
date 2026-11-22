@@ -1,7 +1,7 @@
 // Where AgentDock keeps state, and the values more than one package must agree on. ESLint fails on a
 // hand-written copy of any of these outside this file (eslint.config.js → "one owner for shared values").
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { HookEventName } from "./ipc.ts";
 
 /** The per-project state folder's name. */
@@ -43,7 +43,17 @@ export function projectPolicyPath(projectRoot: string, scope: "project" | "local
   return join(projectRoot, CTRLPLANE_DIR, scope === "local" ? "policies.local.json" : "policies.json");
 }
 
-/** The developer's own state folder: `CTRLPLANE_HOME`, or `~/.ctrlplane` when it is unset or empty. */
+/**
+ * The developer's own state folder: `CTRLPLANE_HOME`, or `~/.ctrlplane` when it is unset or empty. A relative value
+ * throws, because it would resolve inside the current folder, usually a project the agent can write.
+ */
 export function ctrlplaneHome(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {
-  return env.CTRLPLANE_HOME || join(home, CTRLPLANE_DIR);
+  const value = env.CTRLPLANE_HOME;
+  if (!value) return join(home, CTRLPLANE_DIR);
+  if (!isAbsolute(value)) throw new Error(RELATIVE_HOME_MESSAGE);
+  return value;
 }
+
+/** The error a relative `CTRLPLANE_HOME` raises; supervisor-config.ts repeats it because it imports nothing. */
+export const RELATIVE_HOME_MESSAGE =
+  "CTRLPLANE_HOME must be an absolute path; a relative one would point inside the current folder. Unset it or give a full path.";
