@@ -68,6 +68,21 @@ test("flags an assertion removed from a test that stays, and a deleted test file
   assert.deepEqual(rules(deleted), ["test-deleted"]);
 });
 
+test("a rewritten assertion is not a removed one; a net loss of assertions in a test file is", () => {
+  const rewritten = fileDiff(
+    "packages/core/tests/a.test.ts",
+    ["  assert.equal(r.exitCode, 0);"],
+    ['  assert.ok(typeof r === "string");'],
+  );
+  const lost = fileDiff(
+    "packages/core/tests/a.test.ts",
+    ["  assert.ok(x);"],
+    ["  assert.ok(x);", "  assert.equal(y, 2);"],
+  );
+  assert.deepEqual(rules(rewritten), []);
+  assert.deepEqual(rules(lost), ["assertion-removed"]);
+});
+
 test("treats a +++ line inside a hunk as content, not a header", () => {
   assert.deepEqual(rules(fileDiff("packages/core/src/a.ts", ["++i; // @ts-ignore"])), ["silenced-checker"]);
 });

@@ -179,9 +179,20 @@ export function findFloorViolations(diff: string, ignored: (file: string) => boo
   for (const file of deleted) {
     if (!ignored(file) && CODE_FILE.test(file) && TEST_FILE.test(file)) flag("test-deleted", file, "file deleted");
   }
-  for (const { file, text } of removed) {
-    if (ignored(file) || deleted.includes(file)) continue;
-    if (CODE_FILE.test(file) && TEST_FILE.test(file) && ASSERTION.test(text)) flag("assertion-removed", file, text);
+  // A rewritten assertion removes one line and adds another; only a net loss per test file lowers the bar.
+  const isAssertion = (l: Line) =>
+    !ignored(l.file) &&
+    !deleted.includes(l.file) &&
+    CODE_FILE.test(l.file) &&
+    TEST_FILE.test(l.file) &&
+    ASSERTION.test(l.text);
+  const addedAssertions = new Map<string, number>();
+  for (const l of added.filter(isAssertion)) addedAssertions.set(l.file, (addedAssertions.get(l.file) ?? 0) + 1);
+  const removedByFile = new Map<string, Line[]>();
+  for (const l of removed.filter(isAssertion)) removedByFile.set(l.file, [...(removedByFile.get(l.file) ?? []), l]);
+  for (const [file, lines] of removedByFile) {
+    const lost = lines.length - (addedAssertions.get(file) ?? 0);
+    for (const l of lines.slice(0, Math.max(0, lost))) flag("assertion-removed", file, l.text);
   }
 
   const removedRules = removed.filter((l) => CONSTRAINTS_FILE.test(l.file) && ruleKey(l.text) !== null);
