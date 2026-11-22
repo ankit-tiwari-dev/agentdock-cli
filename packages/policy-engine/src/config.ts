@@ -44,6 +44,15 @@ export function configPath(projectRoot: string, scope: ConfigScope): string {
   return projectPolicyPath(projectRoot, scope);
 }
 
+/** null for the user scope when `CTRLPLANE_HOME` is relative, so it counts as absent rather than read from the project. */
+function readablePath(projectRoot: string, scope: ConfigScope): string | null {
+  try {
+    return configPath(projectRoot, scope);
+  } catch {
+    return null;
+  }
+}
+
 function readConfigFile(path: string): PolicyConfigFile | null {
   if (!existsSync(path)) return null;
   try {
@@ -69,9 +78,9 @@ export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
   };
 
   for (const scope of order) {
-    const path = configPath(projectRoot, scope);
-    const file = readConfigFile(path);
-    if (!file) continue;
+    const path = readablePath(projectRoot, scope);
+    const file = path === null ? null : readConfigFile(path);
+    if (!file || path === null) continue;
     resolved.sources.push(path);
 
     for (const [id, o] of Object.entries(file.rules ?? {})) {
@@ -98,7 +107,7 @@ export function configStamp(projectRoot: string): string {
   return (["user", "project", "local"] as ConfigScope[])
     .map((s) => {
       try {
-        return String(statSync(configPath(projectRoot, s)).mtimeMs);
+        return String(statSync(readablePath(projectRoot, s) ?? "").mtimeMs);
       } catch {
         return "-";
       }

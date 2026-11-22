@@ -64,3 +64,18 @@ test("writing the settings file leaves no temp file and keeps unknown fields", (
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("regression: an empty CTRLPLANE_HOME means ~/.ctrlplane and a relative one is refused", () => {
+  // An empty or relative value made the settings file resolve inside the current folder, which the agent can write.
+  assert.equal(
+    supervisorFilePath({ CTRLPLANE_HOME: "" }, "/home/dev"),
+    join("/home/dev", ".ctrlplane", "supervisor.json"),
+  );
+  assert.equal(supervisorFilePath({}, "/home/dev"), join("/home/dev", ".ctrlplane", "supervisor.json"));
+  for (const value of [".ctrlplane", "state", "./x"]) {
+    assert.throws(
+      () => supervisorFilePath({ CTRLPLANE_HOME: value }, "/home/dev"),
+      /CTRLPLANE_HOME must be an absolute path/,
+    );
+  }
+});

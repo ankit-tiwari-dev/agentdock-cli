@@ -1,6 +1,6 @@
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { randomBytes } from "node:crypto";
 
 export type ProviderName = "codex" | "claude" | "openai-compatible";
@@ -72,9 +72,15 @@ export function parseSupervisorFile(text: string): ParseResult {
   return { ok: true, value: file as SupervisorFile };
 }
 
+export const RELATIVE_HOME_MESSAGE =
+  "CTRLPLANE_HOME must be an absolute path; a relative one would point inside the current folder. Unset it or give a full path.";
+
+/** Throws on a relative `CTRLPLANE_HOME`, so the key's settings are never read from a folder the agent can write. */
 export function supervisorFilePath(env: Record<string, string | undefined> = process.env, home = homedir()): string {
   // Same rule as ctrlplaneHome() in packages/core/src/paths.ts; this file is copied into AgentDock, so it imports nothing.
-  return join(env.CTRLPLANE_HOME || join(home, ".ctrlplane"), "supervisor.json");
+  const value = env.CTRLPLANE_HOME;
+  if (value && !isAbsolute(value)) throw new Error(RELATIVE_HOME_MESSAGE);
+  return join(value || join(home, ".ctrlplane"), "supervisor.json");
 }
 
 /** Written to a temp file and renamed over the target, so a reader never sees half a file. */

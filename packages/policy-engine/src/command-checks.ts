@@ -435,7 +435,14 @@ export function shellAssignment(sub: string): { name: string; value: string } | 
 
 /** Where user-level supervisor config lives (`CTRLPLANE_HOME`, default `~/.ctrlplane`), forward slashes. */
 export function ctrlplaneHome(): string {
-  return userStateDir().replace(/\\/g, "/").replace(/\/+$/, "");
+  let dir: string;
+  try {
+    dir = userStateDir();
+  } catch {
+    // A relative CTRLPLANE_HOME is never read, so the default folder is the one left to protect.
+    dir = userStateDir({});
+  }
+  return dir.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
 const VAR_REF =
