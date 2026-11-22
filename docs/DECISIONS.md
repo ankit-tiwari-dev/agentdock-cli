@@ -228,7 +228,7 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - About two weeks of provider work is retired.
   - Developers lose a plain-language review inside the dashboard.
   - D-5's opt-in AI session summaries also called a model; D-22 removes them.
-  - **Not decided yet:** how the deterministic summary reaches the dashboard. The backend may not import CLI code (AgentDock D-10, its architecture rules), and the blast-radius code is not a standalone file that can be copied.
+  - How the deterministic summary reaches the dashboard: D-23.
 
 ## D-22 · Session summaries are deterministic only, and the nested-run bypass goes; supersedes D-5
 
@@ -245,3 +245,21 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Cost:**
   - Summaries say what happened, not why; handoff notes carry the why.
   - A config that still sets `context.aiSummaries` needs a defined behaviour; the removal issue proposes ignoring it with a warning.
+
+## D-23 · The daemon records each session's change summary in `audit.db`; the dashboard only reads it
+
+- **Decision:**
+  - The daemon computes a session's change summary and writes it to a new table in `.ctrlplane/audit.db`. The summary is the structured output of the `explain` engine: files changed with line counts, exported symbols touched and their blast radius, dependency and config changes, and a risk level.
+  - Only that structured summary is stored, never a patch or file contents.
+  - The dashboard reads the table like the rest of the audit trail. It runs no CLI and no `git`, so the read-only container needs neither.
+  - `audit.db` stays the only contract between agentdock-cli and AgentDock.
+  - The summary is kept with its session, so "what did that session change" still has an answer after later commits.
+- **Why:**
+  - **Rejected: the backend running `ctrlplane explain --json`.** It would add a second contract between the repos and fail in the container (AgentDock D-4).
+  - **Rejected: copying the explanation code into AgentDock.** It would duplicate logic, and that code is not standalone.
+  - Recording per session makes the diff part of the audit trail, not a live view of today's working tree.
+- **Cost:**
+  - A session gets a summary only while the daemon runs (as with cost, D-14).
+  - Computing it takes `git` time and some storage, so only the summary is stored.
+  - **Not decided yet:** when the summary is taken. `SessionEnd` is installed only for Claude Code; Codex and OpenCode report no session end, so a `SessionEnd`-only capture would leave their sessions without one.
+  - **Not decided yet:** what the diff is measured against. A diff from the commit at session start includes every change made in that window, the developer's own included, not only the agent's.
