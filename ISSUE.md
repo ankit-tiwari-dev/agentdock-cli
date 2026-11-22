@@ -317,7 +317,11 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 
 - **Symptoms:** a deny-list can never be complete. Still allowed: `taskkill`/`pkill -f daemon-run`/`Stop-Process` against the daemon, `git config core.hooksPath` and `git -c core.hooksPath=...`, `git apply`, `rsync --delete ~/`, `shred -u`, the abbreviation `git reset --har`, secrets read from inside a `python -c`/`node -e` script, Grep or Glob over `.env*`, and heredoc bodies.
 - **Also:** a custom rules module runs in the hook process, so it can still patch globals such as `RegExp.prototype`, and the helper files it imports are not protected.
-- **Fix (proposed):** cover the daemon-kill and `core.hooksPath` forms next. Treat the rest as limits of a command deny-list and say so in the README.
+- **Fix (decided, D-19):**
+  - **Close the cheap, likely forms:** killing the daemon (`taskkill`, `pkill -f daemon-run`, `Stop-Process`), `git config core.hooksPath` and `git -c core.hooksPath=...`, and a glob that reaches a nested `sub/.ctrlplane`.
+  - **Document the rest:** list them in the README as known limits of a deny-list, next to the statement that AgentDock is not a boundary against a hostile agent.
+  - **Not chased:** complete shell coverage.
+  - **Closes when:** both parts land.
 
 ## I-47 · FOUND · `ctrlplane verify` from the CLI can never pass
 

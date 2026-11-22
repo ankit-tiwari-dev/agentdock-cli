@@ -163,3 +163,21 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - A bad release stops every agent's tool calls until the developer pauses or fixes it.
   - During a pause, an agent that can make the hook crash gets that call unsupervised. Always-on rules no longer protect it, and it is only recorded.
   - When the redactor is what crashed, the record shows that a call ran but not what it contained.
+
+## D-19 · AgentDock catches mistakes; it is not a boundary against a hostile agent
+
+- **Decision:**
+  - AgentDock's promise is a guardrail: it catches the destructive things agents do by mistake or by being over-eager, and keeps the record. Examples: recursive deletes, force pushes and branch clobbering, reading secret files, edits to its own state.
+  - It is not a sandbox, and does not claim to contain an agent that is deliberately trying to evade supervision. That containment belongs to the OS, a container, or the harness's own sandbox, and the README says so plainly.
+  - Rules stay a deny-list.
+  - Known evasion forms are closed when they are cheap and likely; the rest are listed as known limits.
+  - Strict allow-listing ("ask before any command not explicitly allowed") is not built now; it may come later if users ask for it.
+- **Why:**
+  - A deny-list over shell commands can never be complete (`ISSUE.md` I-46), and only an OS-level sandbox truly contains a shell.
+  - Agents cause harm by mistake far more often than by attack.
+  - A promise the code can keep is worth more than a broader one it cannot.
+  - Strict allow-listing would mean an approval prompt on ordinary work.
+- **Cost:**
+  - An agent that sets out to evade AgentDock can.
+  - Developers who need containment must add a sandbox themselves.
+  - I-46 closes as documented limits plus a few targeted fixes, not as complete shell coverage.

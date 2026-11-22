@@ -22,7 +22,7 @@ _Avoid_: run, conversation, job
 
 **Supervision**:
 AgentDock judging an agent's tool calls and recording them, without running the agent.
-_Avoid_: orchestration, execution, control plane
+_Avoid_: orchestration, execution, control plane, sandbox, security boundary
 
 **Audit trail**:
 The local record of every tool call AgentDock saw and the verdict it gave, kept per project.
