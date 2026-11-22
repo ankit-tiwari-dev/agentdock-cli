@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import type { CommandResult } from "./policies-cmd.ts";
+import type { CommandResult } from "./result.ts";
 import {
   DEFAULT_MODEL,
   checkBaseUrl,

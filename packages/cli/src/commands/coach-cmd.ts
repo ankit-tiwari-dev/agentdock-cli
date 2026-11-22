@@ -1,5 +1,5 @@
 import { evaluatePromptQuality } from "../../../explanation/src/prompt-coach.ts";
-import type { CommandResult } from "./policies-cmd.ts";
+import type { CommandResult } from "./result.ts";
 
 export function handleCoachCommand(promptArgs: string[]): CommandResult {
   const prompt = promptArgs.join(" ").trim();

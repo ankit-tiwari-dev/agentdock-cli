@@ -9,7 +9,7 @@ import {
 } from "../../../context/src/index.ts";
 import { buildProjectEngine } from "../../../policy-engine/src/index.ts";
 import { StorageEngine } from "../../../storage/src/index.ts";
-import type { CommandResult } from "./policies-cmd.ts";
+import type { CommandResult } from "./result.ts";
 import { auditDbPath, ctrlplaneDir } from "../../../core/src/index.ts";
 
 function flag(args: string[], name: string): string | undefined {

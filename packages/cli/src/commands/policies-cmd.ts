@@ -11,10 +11,7 @@ import {
 } from "../../../policy-engine/src/index.ts";
 import type { PolicyAction } from "../../../core/src/index.ts";
 
-export interface CommandResult {
-  output: string;
-  exitCode: number;
-}
+import type { CommandResult } from "./result.ts";
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);

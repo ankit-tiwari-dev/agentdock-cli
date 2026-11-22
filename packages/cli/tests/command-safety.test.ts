@@ -1,14 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { CLI_COMMAND_SAFETY, isSupervisorOffSwitch } from "../../policy-engine/src/default-rules.ts";
-
-const CLI_SOURCE = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
+import { COMMANDS } from "../src/cli.ts";
 
 test("every command cli.ts dispatches is classified in CLI_COMMAND_SAFETY", () => {
-  const commands = [...CLI_SOURCE.matchAll(/^\s*case "([a-z][\w-]*)":/gm)].map((m) => m[1]);
-  assert.ok(commands.length > 10, "found the dispatch switch in cli.ts");
-  const missing = commands.filter((c) => !Object.hasOwn(CLI_COMMAND_SAFETY, c));
+  const missing = Object.keys(COMMANDS).filter((c) => !Object.hasOwn(CLI_COMMAND_SAFETY, c));
   assert.deepEqual(
     missing,
     [],

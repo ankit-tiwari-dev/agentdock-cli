@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { findLocalClaudeTranscripts, parseClaudeTranscript } from "../../../agent-adapters/src/backtracer.ts";
-import type { CommandResult } from "./policies-cmd.ts";
+import type { CommandResult } from "./result.ts";
 
 type Session = ReturnType<typeof parseClaudeTranscript>;
 

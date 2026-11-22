@@ -4,7 +4,7 @@ import { StorageEngine } from "../../../storage/src/index.ts";
 import { parseUnifiedDiff } from "../../../git-analyzer/src/index.ts";
 import { existsSync } from "node:fs";
 
-import type { CommandResult } from "./policies-cmd.ts";
+import type { CommandResult } from "./result.ts";
 import { readWorkingTreeDiff } from "./working-diff.ts";
 import { auditDbPath } from "../../../core/src/index.ts";
 
