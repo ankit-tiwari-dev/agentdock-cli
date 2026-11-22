@@ -259,6 +259,11 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
     - Each computation replaces the session's previous summary.
     - A `SessionEnd`, sent only by Claude Code, runs the final computation at once.
     - This gives Codex and OpenCode sessions a summary too, though they report no session end.
+  - **What it measures:**
+    - The diff runs from the commit recorded at session start (`base_commit_sha`) to the working tree at the moment of capture.
+    - Each file is marked either as touched by this session (its `Edit` or `Write` calls, or a shell write target the policy engine resolved) or as changed in the window by something else: the developer, another session, or a tool.
+    - The dashboard shows both marks. It never calls a window change the agent's.
+  - **No baseline, no summary:** with no known starting commit (the `0000…` placeholder) or outside a git repository, the row records `NO_BASE`, stores no diff, and the daemon logs one warning.
   - **Limits:**
     - `git diff` may run for 3 seconds; past that the summary is abandoned and recorded as `TIMED_OUT`.
     - A change touching more than 500 files keeps only file-level counts, without symbol analysis, recorded as `TOO_LARGE`.
@@ -270,4 +275,5 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - A session gets a summary only while the daemon runs (as with cost, D-14).
   - Computing it takes `git` time and some storage, so only the summary is stored.
   - During a session the summary trails the latest turn by about 5 seconds.
-  - **Not decided yet:** what the diff is measured against. A diff from the commit at session start includes every change made in that window, the developer's own included, not only the agent's.
+  - A shell change to a file the session never named shows as changed in the window, not as the session's own.
+  - Sessions created while the daemon was down have no starting commit, so they record `NO_BASE`.

@@ -40,6 +40,10 @@ _Avoid_: summary, todo
 The exported symbols and files a change touches, and what depends on them.
 _Avoid_: impact analysis, risk score
 
+**Change summary**:
+What changed in the repository while a session ran, file by file, each marked as touched by the session or changed in the window by something else.
+_Avoid_: agent diff, patch
+
 **Audit trail**:
 The local record of every tool call AgentDock saw and the verdict it gave, kept per project.
 _Avoid_: immutable log, ledger
