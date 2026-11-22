@@ -328,7 +328,7 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 
 - **Symptoms:** an unexpected exception while evaluating PreToolUse prints `[ctrlplane hook error] ...` and exits 0, so the call runs unchecked. In CI it exits 2.
 - **Root cause:** fail-open was the original behaviour, and changing it can stop every agent action whenever the hook has a bug.
-- **Fix (proposed):** the owner decides between fail-open and fail-closed for local runs (`packages/cli/src/commands/hook-cmd.ts`).
+- **Fix (decided, D-18):** `PreToolUse` fails closed locally too, with a message naming the error and `ctrlplane pause`; other hook events fail open with a `[ctrlplane warning]` line. Not implemented yet, and how the pause stays a reliable way out is still open (D-18 → Cost).
 
 ## I-49 · FIXED · Regexes on agent input backtracked quadratically and could overrun the hook's 1500 ms budget
 

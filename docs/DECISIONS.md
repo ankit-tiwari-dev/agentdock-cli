@@ -123,7 +123,7 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
     - It is built for one developer using a harness on their own machine.
     - A team stays possible later only through portable artifacts: the project policy committed with the repo (D-16) and an exported audit trail. No hosting, accounts or multi-tenancy are built.
   - **The audit trail:** it is a local SQLite event log in `.ctrlplane/audit.db`, protected by policy rules. It is not called immutable unless tamper evidence, such as a hash chain, is built.
-  - **Naming:** AgentDock is not described as a "control plane" or an "orchestrator". The replacement tagline is still to choose: "Local Supervision and Safety Layer for Coding Agents" or "Local Agent Supervisor".
+  - **Naming:** AgentDock is "the local safety and audit layer for AI coding agents". It is not described as a "control plane" or an "orchestrator".
   - **The editor extension** leaves the AgentDock repo; editor work, if it comes back, gets its own repo.
 - **Why:**
   - The hook path is agent-neutral, and that is where AgentDock's value sits.
@@ -136,3 +136,17 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - Developers building their own agents and teams wanting central policy are not served.
   - Hardening the hook path, I-46 and I-48 first, comes before any new capability.
   - Removing the extension, and changing the CLI help text and both READMEs to the new name, are follow-up tasks.
+
+## D-18 · A crash in the hook blocks the tool call, and only the developer can get past it
+
+- **Decision:**
+  - When the hook fails unexpectedly while judging a `PreToolUse` call, it denies the call, locally as in CI.
+  - The denial names the error and the way out: "Run 'ctrlplane pause' in your terminal to temporarily bypass, or report this bug."
+  - Agents stay unable to run `ctrlplane pause` themselves (D-6, `CLI_COMMAND_SAFETY`).
+  - A crash in any other hook event (prompt submit, session start, stop, `PostToolUse`) lets the event through and prints a `[ctrlplane warning] ...` line on stderr.
+- **Why:**
+  - A crash is the one case where nothing judged the call, so allowing it would let an agent buy an unsupervised call by making the hook fail (D-17).
+  - The other events run nothing, so failing them would lock the session without protecting anything.
+- **Cost:**
+  - A bad release stops every agent's tool calls until the developer pauses or fixes it.
+  - **Not decided yet:** a pause keeps the always-on rules running, and the pause is read after work that can itself fail. As written, `ctrlplane pause` does not get the developer past a crash in an always-on rule or before the pause is read. How the way out stays reliable is the next decision.
