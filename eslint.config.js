@@ -22,7 +22,8 @@ export default tseslint.config(
   {
     // One owner for shared values: a second hand-written copy drifts (ISSUE.md I-34, I-59; CLAUDE.md rule table).
     files: ["packages/*/src/**/*.ts"],
-    ignores: ["packages/core/src/paths.ts"],
+    // supervisor-config.ts is copied verbatim into AgentDock, so it may not import paths.ts (see the block below).
+    ignores: ["packages/core/src/paths.ts", "packages/cli/src/supervisor-config.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",
@@ -48,6 +49,22 @@ export default tseslint.config(
           message:
             "A hook-event set already exists: use CONTEXT_EVENTS from packages/core/src/paths.ts, or add one there.",
         },
+      ],
+    },
+  },
+  {
+    // AgentDock copies these files verbatim (its scripts/cli-copies.ts checks the copies match), so they may
+    // import only node: built-ins; an import of another package would not resolve in the copy.
+    files: [
+      "packages/storage/src/redactor.ts",
+      "packages/cli/src/keychain.ts",
+      "packages/cli/src/supervisor-config.ts",
+      "packages/core/src/token-pricing.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [{ regex: "^\\.", message: "Copied verbatim into AgentDock: import only node: built-ins here." }] },
       ],
     },
   },

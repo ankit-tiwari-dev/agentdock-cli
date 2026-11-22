@@ -2,7 +2,6 @@ import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { ctrlplaneHome } from "../../core/src/index.ts";
 
 export type ProviderName = "codex" | "claude" | "openai-compatible";
 export const PROVIDERS: readonly ProviderName[] = ["codex", "claude", "openai-compatible"];
@@ -74,7 +73,8 @@ export function parseSupervisorFile(text: string): ParseResult {
 }
 
 export function supervisorFilePath(env: Record<string, string | undefined> = process.env, home = homedir()): string {
-  return join(ctrlplaneHome(env, home), "supervisor.json");
+  // Same rule as ctrlplaneHome() in packages/core/src/paths.ts; this file is copied into AgentDock, so it imports nothing.
+  return join(env.CTRLPLANE_HOME || join(home, ".ctrlplane"), "supervisor.json");
 }
 
 /** Written to a temp file and renamed over the target, so a reader never sees half a file. */
