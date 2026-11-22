@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { SpecManager } from "../../../intent/src/index.ts";
 import {
   injectClaudeHooks,
@@ -10,6 +10,7 @@ import {
   readOpenCodeConfig,
 } from "../../../agent-adapters/src/index.ts";
 import { DEFAULT_PROJECT_CONFIG } from "../../../policy-engine/src/config.ts";
+import { auditDbPath, ctrlplaneDir } from "../../../core/src/index.ts";
 
 /**
  * Creates `path` with `content` unless something is already there. One exclusive create rather than a check
@@ -42,20 +43,20 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
   message: string;
 } {
   const projectPath = options?.projectPath ?? process.cwd();
-  const ctrlplaneDir = join(projectPath, ".ctrlplane");
+  const stateDir = ctrlplaneDir(projectPath);
   checkAgentConfigs(projectPath, options?.agent?.toLowerCase() ?? "all");
 
-  if (!existsSync(ctrlplaneDir)) {
-    mkdirSync(ctrlplaneDir, { recursive: true });
+  if (!existsSync(stateDir)) {
+    mkdirSync(stateDir, { recursive: true });
   }
 
   // Spec and shared policy config are meant to be committed; runtime state is not.
-  const gitignorePath = join(ctrlplaneDir, ".gitignore");
+  const gitignorePath = join(stateDir, ".gitignore");
   writeIfAbsent(
     gitignorePath,
     [
-      "audit.db",
-      "audit.db-*",
+      basename(auditDbPath(projectPath)),
+      `${basename(auditDbPath(projectPath))}-*`,
       "blobs/",
       "state/",
       "daemon.lock",
@@ -71,7 +72,7 @@ export function handleInit(options?: { projectPath?: string; agent?: string }): 
   specManager.init("Project Control Plane Specification", "Define your feature requirements and criteria.");
 
   // 2. Shared policy config (committed). Personal overrides go in policies.local.json.
-  const policyPath = join(ctrlplaneDir, "policies.json");
+  const policyPath = join(stateDir, "policies.json");
   writeIfAbsent(policyPath, JSON.stringify(DEFAULT_PROJECT_CONFIG, null, 2) + "\n");
 
   // 3. Inject hooks based on selected agent

@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { SupervisorDaemon } from "../../../daemon/src/index.ts";
 import { getRunningDaemonLock, isProcessAlive, type DaemonLock } from "../../../daemon/src/lock.ts";
 import { sendDaemonControl } from "../../../agent-adapters/src/hook-client.ts";
+import { ctrlplaneDir, daemonLockPath } from "../../../core/src/index.ts";
+import { failed, ok, type CommandResult } from "./result.ts";
 
 const BIN_PATH = fileURLToPath(new URL("../bin.ts", import.meta.url));
 
@@ -13,7 +15,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function lockPath(root: string): string {
-  return join(root, ".ctrlplane", "daemon.lock");
+  return daemonLockPath(root);
 }
 
 /** Removes the lock only if it still describes `lock` (a new daemon may have replaced it meanwhile). */
@@ -45,16 +47,16 @@ async function confirmedDaemon(root: string): Promise<{ lock: DaemonLock; versio
  * Starts the daemon as a detached background process. The CLI itself exits right after,
  * so the daemon must not live inside this process.
  */
-export async function handleStartDaemon(projectPath = process.cwd(), timeoutMs = 8000): Promise<string> {
+export async function handleStartDaemon(projectPath = process.cwd(), timeoutMs = 8000): Promise<CommandResult> {
   const root = resolve(projectPath);
   const running = await confirmedDaemon(root);
   if (running) {
-    return `Supervisor daemon is already running (PID: ${running.lock.pid}, IPC: ${running.lock.ipcTarget}).`;
+    return ok(`Supervisor daemon is already running (PID: ${running.lock.pid}, IPC: ${running.lock.ipcTarget}).`);
   }
 
-  const ctrlplaneDir = join(root, ".ctrlplane");
-  if (!existsSync(ctrlplaneDir)) mkdirSync(ctrlplaneDir, { recursive: true });
-  const logFd = openSync(join(ctrlplaneDir, "daemon.log"), "a");
+  const stateDir = ctrlplaneDir(root);
+  if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
+  const logFd = openSync(join(stateDir, "daemon.log"), "a");
 
   const child = spawn(process.execPath, [BIN_PATH, "daemon-run", "--project", root], {
     cwd: root,
@@ -69,12 +71,12 @@ export async function handleStartDaemon(projectPath = process.cwd(), timeoutMs =
   while (Date.now() < deadline) {
     const lock = getRunningDaemonLock(root);
     if (lock && lock.pid === child.pid) {
-      return `Supervisor daemon started (PID: ${lock.pid}, IPC: ${lock.ipcTarget}). Log: .ctrlplane/daemon.log`;
+      return ok(`Supervisor daemon started (PID: ${lock.pid}, IPC: ${lock.ipcTarget}). Log: .ctrlplane/daemon.log`);
     }
     if (child.exitCode !== null) break;
     await sleep(100);
   }
-  return `Supervisor daemon failed to start within ${timeoutMs}ms. See .ctrlplane/daemon.log`;
+  return failed(`Supervisor daemon failed to start within ${timeoutMs}ms. See .ctrlplane/daemon.log`);
 }
 
 /** Foreground entry used by the detached child. Runs until a shutdown frame or signal arrives. */
@@ -105,15 +107,16 @@ export async function handleRunDaemon(projectPath = process.cwd()): Promise<numb
   return 0;
 }
 
-export async function handleStopDaemon(projectPath = process.cwd()): Promise<string> {
+export async function handleStopDaemon(projectPath = process.cwd()): Promise<CommandResult> {
   const root = resolve(projectPath);
   const running = await confirmedDaemon(root);
   if (!running) {
-    return "No running supervisor daemon found.";
+    return ok("No running supervisor daemon found.");
   }
   const existing = running.lock;
 
-  await sendDaemonControl(existing.ipcTarget, "shutdown");
+  // A lock without a token is from an older daemon that cannot check one; the PID kill below stops it.
+  if (existing.token) await sendDaemonControl(existing.ipcTarget, "shutdown", 1500, existing.token);
   for (let i = 0; i < 30 && isProcessAlive(existing.pid); i++) await sleep(100);
 
   // Only reached for a PID that answered as our daemon a moment ago.
@@ -121,20 +124,22 @@ export async function handleStopDaemon(projectPath = process.cwd()): Promise<str
     try {
       process.kill(existing.pid);
     } catch (err) {
-      return `Failed to terminate daemon (PID: ${existing.pid}): ${String(err)}`;
+      return failed(`Failed to terminate daemon (PID: ${existing.pid}): ${String(err)}`);
     }
   }
 
   if (existsSync(lockPath(root))) removeStaleLock(root, existing);
-  return `Supervisor daemon stopped (PID: ${existing.pid}).`;
+  return ok(`Supervisor daemon stopped (PID: ${existing.pid}).`);
 }
 
-export async function handleStatus(projectPath = process.cwd()): Promise<string> {
+export async function handleStatus(projectPath = process.cwd()): Promise<CommandResult> {
   const root = resolve(projectPath);
   const running = await confirmedDaemon(root);
   if (!running) {
-    return "Supervisor daemon: OFFLINE\nStatus: No active session monitored. Hooks still enforce rules in-process.";
+    return ok("Supervisor daemon: OFFLINE\nStatus: No active session monitored. Hooks still enforce rules in-process.");
   }
   const { lock, version } = running;
-  return `Supervisor daemon: RUNNING\nPID: ${lock.pid}\nIPC Endpoint: ${lock.ipcTarget}\nHealth: responding (v${version})`;
+  return ok(
+    `Supervisor daemon: RUNNING\nPID: ${lock.pid}\nIPC Endpoint: ${lock.ipcTarget}\nHealth: responding (v${version})`,
+  );
 }

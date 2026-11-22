@@ -1,0 +1,13 @@
+[
+  {
+    "type": "dependency",
+    "from": "packages/daemon/src/supervisor-daemon.ts",
+    "to": "packages/context/src/recorder.ts",
+    "unresolvedTo": "../../context/src/recorder.ts",
+    "dependencyTypes": ["local", "import"],
+    "rule": {
+      "severity": "error",
+      "name": "layer-daemon"
+    }
+  }
+]

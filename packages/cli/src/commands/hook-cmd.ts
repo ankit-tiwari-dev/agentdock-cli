@@ -2,6 +2,7 @@ import { DAEMON_UNAVAILABLE, dispatchHook, isCiMode } from "../../../agent-adapt
 import { formatHookOutput, type HookProcessOutput } from "../../../agent-adapters/src/hook-output.ts";
 import { normalizeHookPayload, type AgentHookPayload, type HookVerdictResponse } from "../../../core/src/index.ts";
 import { findProjectRoot } from "../../../daemon/src/lock.ts";
+import { CONTEXT_EVENTS } from "../../../core/src/index.ts";
 
 export interface HookRunOptions {
   agent?: string;
@@ -14,7 +15,6 @@ export interface HookRunOptions {
 }
 
 // Tool-call hooks stay on the fast path: only these events load the context store.
-const CONTEXT_EVENTS = new Set(["UserPromptSubmit", "SessionStart", "PreCompact", "Stop", "SessionEnd"]);
 
 /** Pure core of the hook shim: stdin text in, process output out. */
 export async function runHook(

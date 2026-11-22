@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentHookPayload, AuditEvent } from "../../core/src/index.ts";
+import { auditDbPath, type AgentHookPayload, type AuditEvent } from "../../core/src/index.ts";
 import { SpecManager } from "../../intent/src/index.ts";
 import { StorageEngine } from "../../storage/src/index.ts";
 import { PolicyEngine } from "../../policy-engine/src/index.ts";
@@ -11,7 +11,6 @@ import { runHook } from "../../cli/src/commands/hook-cmd.ts";
 import {
   ContextRecorder,
   aiSummarize,
-  auditDbPath,
   buildContextPack,
   cleanPrompt,
   contextForHook,

@@ -11,10 +11,7 @@ import {
 } from "../../../policy-engine/src/index.ts";
 import type { PolicyAction } from "../../../core/src/index.ts";
 
-export interface CommandResult {
-  output: string;
-  exitCode: number;
-}
+import type { CommandResult } from "./result.ts";
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -102,7 +99,16 @@ export async function handlePoliciesCommand(
         : sub === "disable"
           ? { enabled: false }
           : { mode: sub as "observe" | "enforce", enabled: true };
-    const path = updateRuleOverride(root, scopeOf(args), rule.id, patch);
+    // The committed project file can only tighten rules, so a softening write there would be ignored.
+    const softens = sub === "disable" || sub === "observe";
+    if (softens && args.includes("--project")) {
+      return {
+        output: `${rule.id}: the committed project file can only tighten rules, so '${sub}' there would be ignored. Use --local (this clone only) or --user (all your projects).`,
+        exitCode: 2,
+      };
+    }
+    const scope = softens && !args.includes("--user") ? "local" : scopeOf(args);
+    const path = updateRuleOverride(root, scope, rule.id, patch);
     return {
       output: `${rule.id}: ${sub === "observe" ? "observe mode (logs 'would block', never blocks)" : sub + "d"} in ${path}`,
       exitCode: 0,

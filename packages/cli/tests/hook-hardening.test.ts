@@ -127,7 +127,7 @@ test("regression: stop does not kill an unrelated process whose PID is in a stal
       join(dir, ".ctrlplane", "daemon.lock"),
       JSON.stringify({ pid: bystander.pid, ipcTarget: goneTarget() }),
     );
-    const msg = await handleStopDaemon(dir);
+    const msg = (await handleStopDaemon(dir)).output;
     assert.equal(isProcessAlive(bystander.pid!), true, `bystander was killed: ${msg}`);
     assert.equal(existsSync(join(dir, ".ctrlplane", "daemon.lock")), false, "stale lock is removed");
     assert.match(msg, /No running supervisor daemon/);
@@ -144,11 +144,11 @@ test("regression: status and start treat a lock whose daemon does not answer as 
     await new Promise((r) => bystander.once("spawn", r));
     const stale = JSON.stringify({ pid: bystander.pid, ipcTarget: goneTarget() });
     writeFileSync(join(dir, ".ctrlplane", "daemon.lock"), stale);
-    assert.match(await handleStatus(dir), /OFFLINE/);
+    assert.match((await handleStatus(dir)).output, /OFFLINE/);
     assert.equal(existsSync(join(dir, ".ctrlplane", "daemon.lock")), false);
 
     writeFileSync(join(dir, ".ctrlplane", "daemon.lock"), stale);
-    const started = await withEnv({ CTRLPLANE_HOME: join(dir, "user-home") }, () => handleStartDaemon(dir));
+    const started = (await withEnv({ CTRLPLANE_HOME: join(dir, "user-home") }, () => handleStartDaemon(dir))).output;
     assert.match(started, /started \(PID: \d+/, started);
     assert.doesNotMatch(started, new RegExp(`PID: ${bystander.pid}\\b`));
   } finally {

@@ -19,5 +19,68 @@ export default tseslint.config(
       eqeqeq: ["error", "always", { null: "ignore" }],
     },
   },
+  {
+    // One owner for shared values: a second hand-written copy drifts (ISSUE.md I-34, I-59; CLAUDE.md rule table).
+    files: ["packages/*/src/**/*.ts"],
+    // supervisor-config.ts is copied verbatim into AgentDock, so it may not import paths.ts (see the block below).
+    ignores: ["packages/core/src/paths.ts", "packages/cli/src/supervisor-config.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[value='.ctrlplane']",
+          message:
+            "Use CTRLPLANE_DIR or ctrlplaneDir() / auditDbPath() / daemonLockPath() from packages/core/src/paths.ts.",
+        },
+        {
+          selector: "Literal[value='audit.db']",
+          message: "Use auditDbPath() from packages/core/src/paths.ts.",
+        },
+        {
+          selector: "Literal[value='sess_default']",
+          message: "Use DEFAULT_SESSION_ID from packages/core/src/paths.ts.",
+        },
+        {
+          selector: "MemberExpression[property.name='CTRLPLANE_HOME']",
+          message: "Use ctrlplaneHome() from packages/core/src/paths.ts; it treats an empty CTRLPLANE_HOME as unset.",
+        },
+        {
+          selector: "NewExpression[callee.name='Set'] > ArrayExpression > Literal[value='UserPromptSubmit']",
+          message:
+            "A hook-event set already exists: use CONTEXT_EVENTS from packages/core/src/paths.ts, or add one there.",
+        },
+      ],
+    },
+  },
+  {
+    // AgentDock copies these files verbatim (its scripts/cli-copies.ts checks the copies match), so they may
+    // import only node: built-ins; an import of another package would not resolve in the copy.
+    files: [
+      "packages/storage/src/redactor.ts",
+      "packages/cli/src/keychain.ts",
+      "packages/cli/src/supervisor-config.ts",
+      "packages/core/src/token-pricing.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [{ regex: "^\\.", message: "Copied verbatim into AgentDock: import only node: built-ins here." }] },
+      ],
+    },
+  },
+  {
+    // A daemon or server stopped inside `try` stays running when an earlier assertion throws, and the test
+    // process never exits (CLAUDE.md → Tests; the e2e hang fixed with exit codes in packages/cli).
+    files: ["packages/*/tests/**/*.ts", "scripts/tests/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TryStatement > BlockStatement.block CallExpression[callee.property.name='stop']",
+          message: "Stop a daemon or server in `finally`, not in `try`: a failed assertion would skip it.",
+        },
+      ],
+    },
+  },
   prettier,
 );

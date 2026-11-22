@@ -522,7 +522,7 @@ export function joinWords(words: string[]): string {
 }
 
 /** Bodies of `$(...)`, backticks and `<(...)`/`>(...)` (not inside single quotes, where nothing runs). */
-function substitutionBodies(text: string): string[] {
+export function substitutionBodies(text: string): string[] {
   const found: string[] = [];
   for (let i = 0; i < text.length; i++) {
     const c = text[i];

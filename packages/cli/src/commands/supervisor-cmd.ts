@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
-import type { CommandResult } from "./policies-cmd.ts";
+import type { CommandResult } from "./result.ts";
 import {
   DEFAULT_MODEL,
   checkBaseUrl,
   checkModel,
+  RELATIVE_HOME_MESSAGE,
   isProvider,
   parseSupervisorFile,
   supervisorFilePath,
@@ -45,6 +46,15 @@ const UNKNOWN_PROVIDER = "Unknown provider. Use codex, claude or openai-compatib
 const OFF = "Supervisor: off. Turn it on with: ctrlplane supervisor use <codex|claude|openai-compatible> <model>";
 
 const fail = (output: string, exitCode = 2): CommandResult => ({ output, exitCode });
+
+/** The settings file's path, or null when `CTRLPLANE_HOME` is relative and the command must stop. */
+function settingsPath(env: Record<string, string | undefined>): string | null {
+  try {
+    return supervisorFilePath(env);
+  } catch {
+    return null;
+  }
+}
 
 function isKeyProvider(value: string | undefined): value is KeyProvider {
   return value !== undefined && (KEY_PROVIDERS as readonly string[]).includes(value);
@@ -132,7 +142,8 @@ function use(args: string[], d: SupervisorDeps): CommandResult {
     return fail("--base-url is only for openai-compatible.");
   }
 
-  const path = supervisorFilePath(d.env);
+  const path = settingsPath(d.env);
+  if (path === null) return fail(RELATIVE_HOME_MESSAGE);
   const existing = readExisting(path);
   let baseUrl: string | undefined;
   if (baseUrlArg !== undefined) {
@@ -176,7 +187,8 @@ function use(args: string[], d: SupervisorDeps): CommandResult {
 }
 
 async function status(args: string[], d: SupervisorDeps): Promise<CommandResult> {
-  const path = supervisorFilePath(d.env);
+  const path = settingsPath(d.env);
+  if (path === null) return fail(RELATIVE_HOME_MESSAGE);
   if (!existsSync(path)) return { output: OFF, exitCode: 0 };
   const parsed = parseSupervisorFile(readFileSync(path, "utf8"));
   if (!parsed.ok) {

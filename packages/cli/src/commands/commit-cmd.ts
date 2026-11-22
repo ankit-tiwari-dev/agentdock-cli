@@ -1,5 +1,5 @@
 import { commitAgentTurn } from "../../../git-analyzer/src/agent-commit-tracker.ts";
-import type { CommandResult } from "./policies-cmd.ts";
+import type { CommandResult } from "./result.ts";
 
 export function handleCommitCommand(subjectArgs: string[]): CommandResult {
   const subject = subjectArgs.join(" ").trim();

@@ -1,4 +1,4 @@
-.PHONY: help install typecheck lint format hygiene test ci devcontainer-check
+.PHONY: help install typecheck lint format hygiene test ci constraints devcontainer-check
 
 help:
 	@echo "make install    install exact dependencies from package-lock.json"
@@ -8,6 +8,7 @@ help:
 	@echo "make hygiene    repo rules: names, planning refs, artifacts, pinned actions and images, lockfile"
 	@echo "make test       run every package's tests"
 	@echo "make ci         every gate CI runs, in the same order"
+	@echo "make constraints  the CONSTRAINTS.md checks: floor, coverage, architecture, hook latency (CI's constraints job)"
 	@echo "make devcontainer-check  build the dev container and run make ci and actionlint in it (needs Docker; CI runs it too)"
 
 install:
@@ -30,6 +31,12 @@ test:
 	npm test
 
 ci: lint typecheck hygiene test
+
+constraints:
+	npm run check:floor
+	npm run check:coverage
+	npm run check:arch
+	npm run check:hook-latency
 
 # The repo is mounted read-only and cloned inside, so the check runs as the container's node user whoever owns the
 # checkout, and sees only committed files. Run it from a normal clone: a git worktree's .git points outside the mount.

@@ -8,12 +8,8 @@ import { handleHookCommand } from "./commands/hook-cmd.ts";
 import { handleCoachCommand } from "./commands/coach-cmd.ts";
 import { handleBacktraceCommand } from "./commands/backtrace-cmd.ts";
 import { handleCommitCommand } from "./commands/commit-cmd.ts";
-import {
-  handlePauseCommand,
-  handlePoliciesCommand,
-  handleResumeCommand,
-  type CommandResult,
-} from "./commands/policies-cmd.ts";
+import { handlePauseCommand, handlePoliciesCommand, handleResumeCommand } from "./commands/policies-cmd.ts";
+import { failed, ok, type CommandResult } from "./commands/result.ts";
 import {
   handleCapabilitiesCommand,
   handleContextCommand,
@@ -28,133 +24,7 @@ function print(res: CommandResult): number {
   return res.exitCode;
 }
 
-export async function runCli(args: string[]): Promise<number> {
-  const command = args[0] || "help";
-  const subArgs = args.slice(1);
-
-  switch (command) {
-    case "init": {
-      const agentFlag = subArgs.indexOf("--agent");
-      const agent = agentFlag !== -1 ? subArgs[agentFlag + 1] : undefined;
-      if (agent && !["claude", "codex", "opencode", "all"].includes(agent.toLowerCase())) {
-        console.error(`Unknown --agent '${agent}'. Use claude, codex, opencode or all.`);
-        return 2;
-      }
-      const res = handleInit({ agent });
-      console.log(res.message);
-      return 0;
-    }
-
-    case "policies":
-      return print(await handlePoliciesCommand(subArgs[0], subArgs.slice(1)));
-
-    case "supervisor":
-      return print(await handleSupervisorCommand(subArgs[0], subArgs.slice(1)));
-
-    case "pause":
-      return print(handlePauseCommand(subArgs));
-
-    case "resume":
-      return print(handleResumeCommand());
-
-    case "context":
-      return print(await handleContextCommand(subArgs));
-
-    case "handoff":
-      return print(handleHandoffCommand(subArgs));
-
-    case "memory":
-      return print(handleMemoryCommand(subArgs[0], subArgs.slice(1)));
-
-    case "capabilities":
-      return print(handleCapabilitiesCommand());
-
-    case "start": {
-      const msg = await handleStartDaemon();
-      console.log(msg);
-      return 0;
-    }
-
-    case "stop": {
-      const msg = await handleStopDaemon();
-      console.log(msg);
-      return 0;
-    }
-
-    case "status": {
-      console.log(await handleStatus());
-      return 0;
-    }
-
-    case "daemon-run": {
-      const projectFlag = subArgs.indexOf("--project");
-      return handleRunDaemon(projectFlag !== -1 ? subArgs[projectFlag + 1] : process.cwd());
-    }
-
-    case "spec": {
-      const msg = handleSpecCommand(subArgs[0], subArgs.slice(1));
-      console.log(msg);
-      return 0;
-    }
-
-    case "verify":
-      // Exits 0 only when the report is PASSED.
-      return print(handleVerifyCommand());
-
-    case "explain": {
-      const output = handleExplainCommand();
-      console.log(output);
-      return 0;
-    }
-
-    case "audit": {
-      const output = handleAuditCommand(subArgs[0], subArgs.slice(1));
-      console.log(output);
-      return 0;
-    }
-
-    case "coach":
-      return print(handleCoachCommand(subArgs));
-
-    case "backtrace":
-      return print(handleBacktraceCommand(subArgs[0]));
-
-    case "commit":
-      return print(handleCommitCommand(subArgs));
-
-    case "cost": {
-      const model = subArgs[0] || "claude-3-5-sonnet";
-      const inputArg = subArgs[1] ?? "1000";
-      const outputArg = subArgs[2] ?? "500";
-      // Whole token counts only: parseInt would read "1e6" as 1 and "abc" as NaN.
-      if (!/^\d+$/.test(inputArg) || !/^\d+$/.test(outputArg)) {
-        console.log(
-          "Usage: ctrlplane cost <model> <input-tokens> <output-tokens>  (token counts are whole numbers, e.g. 1000000)",
-        );
-        return 1;
-      }
-      const breakdown = calculateTurnCost({
-        modelName: model,
-        inputTokens: Number(inputArg),
-        outputTokens: Number(outputArg),
-      });
-      console.log(`Estimated Cost (${breakdown.model}): ${breakdown.formattedCost} (${breakdown.totalTokens} tokens)`);
-      if (breakdown.unknownModel) {
-        console.log(
-          `WARNING: unknown model '${breakdown.model}': no price in the catalog, estimated at the default rate.`,
-        );
-      }
-      return 0;
-    }
-
-    case "hook": {
-      const exitCode = await handleHookCommand(subArgs[0] || "PreToolUse", subArgs.slice(1));
-      return exitCode;
-    }
-
-    case "help":
-    default: {
-      console.log(`
+const HELP = `
 AI Development Control Plane (@ctrlplane) v0.3.0
 
 USAGE:
@@ -171,8 +41,8 @@ SUPERVISOR COMMANDS:
 POLICY COMMANDS:
   policies list                       Every rule with its state (enforce/observe/off)
   policies show <id>                  One rule's description, outcome and params
-  policies enable|disable <id>        Switch a rule on or off      [--local|--user]
-  policies observe|enforce <id>       Log-only vs blocking mode    [--local|--user]
+  policies enable|disable <id>        Switch a rule on or off      [--local|--user]  (disable: local by default)
+  policies observe|enforce <id>       Log-only vs blocking mode    [--local|--user]  (observe: local by default)
   policies set <id> <param> <json>    Change a rule parameter      [--local|--user]
   policies test --command "<cmd>" [--expect deny|ask|instruct|allow]
                                       Dry-run a tool call; exits 1 if --expect fails
@@ -201,8 +71,78 @@ CONTEXT COMMANDS:
   commit "<subject>"       Create structured Git commit with agent trailers
   cost <model> <in> <out>  Calculate exact token dollar spend for a model turn
   hook <eventName>         Internal hook shim invoked by agent harnesses
-`);
-      return 0;
-    }
+`;
+
+function flagValue(args: string[], name: string): string | undefined {
+  const i = args.indexOf(name);
+  return i !== -1 ? args[i + 1] : undefined;
+}
+
+function costCommand(args: string[]): CommandResult {
+  const model = args[0] || "claude-3-5-sonnet";
+  const inputArg = args[1] ?? "1000";
+  const outputArg = args[2] ?? "500";
+  // Whole token counts only: parseInt would read "1e6" as 1 and "abc" as NaN.
+  if (!/^\d+$/.test(inputArg) || !/^\d+$/.test(outputArg)) {
+    return failed(
+      "Usage: ctrlplane cost <model> <input-tokens> <output-tokens>  (token counts are whole numbers, e.g. 1000000)",
+    );
   }
+  const breakdown = calculateTurnCost({
+    modelName: model,
+    inputTokens: Number(inputArg),
+    outputTokens: Number(outputArg),
+  });
+  const lines = [`Estimated Cost (${breakdown.model}): ${breakdown.formattedCost} (${breakdown.totalTokens} tokens)`];
+  if (breakdown.unknownModel) {
+    lines.push(`WARNING: unknown model '${breakdown.model}': no price in the catalog, estimated at the default rate.`);
+  }
+  return ok(lines.join("\n"));
+}
+
+/**
+ * Every `ctrlplane` command. Each returns a CommandResult, so a handler that fails has to say so in its exit code;
+ * a string or a bare number does not type-check here. CLI_COMMAND_SAFETY must classify every key (command-safety.test.ts).
+ */
+export const COMMANDS: Readonly<Record<string, (args: string[]) => CommandResult | Promise<CommandResult>>> = {
+  init: (args) => {
+    const agent = flagValue(args, "--agent");
+    if (agent && !["claude", "codex", "opencode", "all"].includes(agent.toLowerCase())) {
+      return { output: `Unknown --agent '${agent}'. Use claude, codex, opencode or all.`, exitCode: 2 };
+    }
+    return ok(handleInit({ agent }).message);
+  },
+  policies: (args) => handlePoliciesCommand(args[0], args.slice(1)),
+  supervisor: (args) => handleSupervisorCommand(args[0], args.slice(1)),
+  pause: (args) => handlePauseCommand(args),
+  resume: () => handleResumeCommand(),
+  context: (args) => handleContextCommand(args),
+  handoff: (args) => handleHandoffCommand(args),
+  memory: (args) => handleMemoryCommand(args[0], args.slice(1)),
+  capabilities: () => handleCapabilitiesCommand(),
+  start: () => handleStartDaemon(),
+  stop: () => handleStopDaemon(),
+  status: () => handleStatus(),
+  "daemon-run": async (args) => ({
+    output: "",
+    exitCode: await handleRunDaemon(flagValue(args, "--project") ?? process.cwd()),
+  }),
+  spec: (args) => handleSpecCommand(args[0], args.slice(1)),
+  // Exits 0 only when the report is PASSED.
+  verify: () => handleVerifyCommand(),
+  explain: () => handleExplainCommand(),
+  audit: (args) => handleAuditCommand(args[0], args.slice(1)),
+  coach: (args) => handleCoachCommand(args),
+  backtrace: (args) => handleBacktraceCommand(args[0]),
+  commit: (args) => handleCommitCommand(args),
+  cost: costCommand,
+  hook: async (args) => ({ output: "", exitCode: await handleHookCommand(args[0] || "PreToolUse", args.slice(1)) }),
+  help: () => ok(HELP),
+};
+
+export async function runCli(args: string[]): Promise<number> {
+  const command = args[0] || "help";
+  const handler = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : undefined;
+  if (!handler) return print(failed(`Unknown command '${command}'.\n${HELP}`));
+  return print(await handler(args.slice(1)));
 }

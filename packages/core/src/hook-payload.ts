@@ -108,7 +108,6 @@ export function normalizeHookPayload(
   const hookEventName = normalizeEventName(cliEventName) ?? eventFromBody ?? "PreToolUse";
 
   const stopActive = pick(raw, "stop_hook_active", "stopHookActive");
-  const control = asString(raw.control);
 
   return {
     hookEventName,
@@ -124,6 +123,5 @@ export function normalizeHookPayload(
     stopHookActive: stopActive === true || stopActive === "true",
     subagentId: asString(pick(raw, "agent_id", "agentId", "subagent_id")),
     agent: guessAgent(raw, explicitAgent),
-    control: control === "shutdown" || control === "ping" ? control : undefined,
   };
 }

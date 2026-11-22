@@ -1,0 +1,4 @@
+# Paths the floor guard (scripts/floor-guard.ts) does not check. Each entry needs a reason.
+# The guard and its tests spell out the patterns they look for.
+scripts/floor-guard.ts
+scripts/tests/floor-guard.test.ts

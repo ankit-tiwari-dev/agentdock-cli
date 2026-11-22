@@ -404,3 +404,66 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 - **Root cause:** the same gap as I-58 in other files. `packages/cli/tests/hook-hardening.test.ts`, `process-e2e.test.ts` and `regressions.test.ts` removed their folders with `rmSync`'s own `maxRetries`, which on Node 22 does not retry `EBUSY` on the folder itself.
 - **Fix:** the retry loop moved from `offline-record.test.ts` into `packages/cli/tests/remove-dir.ts` as `removeDir`, plus `removeDirSync` for synchronous tests, and all four files use it. `e2e.test.ts` already ignores a failed cleanup and is unchanged.
 - **Verification:** `regression: the synchronous remover also waits for a folder a process just ran in` failed on Windows with the retry loop removed and passed with it. `make ci` passed; the CI matrix runs Windows with Node 22, where the failure was seen.
+
+## I-60 · FIXED · A glob in a write target got past the `.ctrlplane` protection
+
+- **Symptoms:** `cp x .ctrlplane/policies.json` was denied, but `cp x .ctrl?lane/policies.json`, `.ctrlplan[e]/…` and `install … .ctrl?lane/…` were allowed, and the shell expanded them onto the real file.
+- **Root cause:** `shellTouchesProtected` in `packages/policy-engine/src/command-checks.ts` compared the raw glob text with whole protected paths.
+- **Fix:** write targets are brace-expanded and each glob is matched segment by segment against every protected root, `CTRLPLANE_HOME` included (`expandBraces`, `globMayReach`). A glob reaching a nested `sub/.ctrlplane` is still not checked.
+- **Verification:** `regression: glob write targets that the shell expands into protected paths are denied` (`packages/policy-engine/tests/glob-write-targets.test.ts`).
+
+## I-61 · FIXED · A committed project config could run its own code in the hook and the daemon
+
+- **Symptoms:** `{"customRulesFile": ".ctrlplane/rules.mjs"}` in a repo's `.ctrlplane/policies.json` ran that module, as the developer, on the first hook. The path could also leave the project.
+- **Root cause:** `packages/policy-engine/src/config.ts` read `customRulesFile` from every scope and `loadCustomRules` imported it.
+- **Fix:** it is read only from `$CTRLPLANE_HOME/policies.json`, and only as a real path inside `CTRLPLANE_HOME`; from project or local scope it is ignored with one warning.
+- **Verification:** `regression: a project or local config cannot name a custom rules module to run` and `regression: a user config loads custom rules only from inside CTRLPLANE_HOME` (`bypass-regressions.test.ts`).
+
+## I-62 · FIXED · A committed project config could switch security rules off
+
+- **Symptoms:** `{"rules":{"RULE-BLOCK-SECRET-READS":{"action":"ALLOW"},"RULE-BLOCK-DESTRUCTIVE-SHELL":{"mode":"observe"}}}` in a repo allowed `cat .env` and `rm -rf /`.
+- **Root cause:** `loadPolicyConfig` merged project overrides like user and local ones.
+- **Fix:** project scope only tightens (`tightenOnly`): `enabled: false`, `observe` and a less strict action are ignored with a warning naming `policies.local.json`. `policies disable|observe` now write to `policies.local.json`; `--project` for them exits 2. Project-scope params such as allow lists can still widen a rule.
+- **Verification:** two `regression:` tests in `packages/policy-engine/tests/catalog-config.test.ts` and two in `packages/cli/tests/policies-cmd.test.ts`.
+
+## I-63 · FIXED · An agent's own hook payload could stop the daemon
+
+- **Symptoms:** `echo '{"control":"shutdown"}' | ctrlplane hook Notification` stopped the daemon; the next hooks then ran without it.
+- **Root cause:** `normalizeHookPayload` (`packages/core/src/hook-payload.ts`) copied `control` from agent input, and `handleHookPayload` acted on it first.
+- **Fix:** the hook path drops `control`. Control frames are `{kind: "control", control, token}`, built only by `sendDaemonControl`, and shutdown needs the per-start token the daemon writes into `daemon.lock`. An agent that writes its own socket client can still read that token, as it could already kill the PID.
+- **Verification:** `packages/agent-adapters/tests/control-frame.test.ts`.
+
+## I-64 · FIXED · A `ctrlplane` verb computed by the shell got past the off-switch check
+
+- **Symptoms:** `x=pause; ctrlplane $x` was allowed and paused supervision; so were `${X:-stop}`, `"$(echo stop)"`, backticks, `st{o,}p` and globs.
+- **Root cause:** `isSupervisorOffSwitch` in `packages/policy-engine/src/default-rules.ts` compared the words after `ctrlplane` literally.
+- **Fix:** a first word, or a sub-command word, that is not literal counts as an off-switch (`isLiteralWord`).
+- **Verification:** `regression: a ctrlplane command or sub-command the shell computes at run time is an off-switch` (`bypass-regressions.test.ts`).
+
+## I-65 · FIXED · Encoded text piped into a shell hid any off-switch
+
+- **Symptoms:** `echo <base64 of "ctrlplane stop"> | base64 -d | sh` was allowed, as were `xxd -r`, `rev`, `printf` with `\x` escapes and `eval "$(… | base64 -d)"`.
+- **Root cause:** no rule looked at decoded or generated text being run as code.
+- **Fix:** the always-on `RULE-ASK-RUN-DECODED-TEXT` asks the developer before a decode step's output reaches a shell or interpreter (`runsDecodedText` in `command-checks.ts`). Decoding inside an interpreter and gzip-only payloads are not seen.
+- **Verification:** `packages/policy-engine/tests/decoded-exec.test.ts`.
+
+## I-66 · FIXED · `init`, `spec approve` and `handoff` inside an interpreter one-liner were allowed
+
+- **Symptoms:** `node -e "require('child_process').execSync('ctrlplane init')"` and `python -c "…('ctrlplane spec approve')"` were allowed.
+- **Root cause:** these commands were kept out of the raw-text match so a commit message naming them stays allowed, and nothing told interpreter code apart from prose.
+- **Fix:** the code argument of `node -e`, `python -c`, `perl -e`, `ruby -e`, `php -r`, `deno eval` and `bun -e` is matched against every off-switch; `matchInText` is now `matchInProse`. Names built at run time are still missed.
+- **Verification:** `regression: init, spec approve and handoff are caught inside interpreter one-liners, not in prose` and `packages/cli/tests/command-safety.test.ts`.
+
+## I-67 · FIXED · An empty or relative `CTRLPLANE_HOME` pointed user state into the project
+
+- **Symptoms:** `CTRLPLANE_HOME=""` made `config.ts` read `policies.json` from the current folder while the self-tamper rule protected `~/.ctrlplane`; `CTRLPLANE_HOME=.ctrlplane` put user state inside the agent-writable project.
+- **Root cause:** three hand-written resolutions, two with `??` and one with `||`, none rejecting a relative path.
+- **Fix:** `ctrlplaneHome()` in `packages/core/src/paths.ts` is the one resolution: empty means `~/.ctrlplane`, a relative value throws; `supervisor-config.ts` repeats it because AgentDock copies that file. Supervisor commands exit 2 on a relative value and the user policy scope counts as absent.
+- **Verification:** `packages/core/tests/paths.test.ts`, `packages/cli/tests/supervisor-config.test.ts`, `catalog-config.test.ts`.
+
+## I-68 · FIXED · Six commands exited 0 when they failed
+
+- **Symptoms:** `ctrlplane spec bogus`, `audit bogus`, `audit show` with no id, an unknown command and a daemon that failed to start all exited 0.
+- **Root cause:** `spec`, `audit`, `start`, `stop`, `status` and `explain` returned strings, and `packages/cli/src/cli.ts` printed them and returned 0.
+- **Fix:** `cli.ts` is a `COMMANDS` table typed to take only a `CommandResult` (`commands/result.ts`), so a string or a bare number no longer type-checks; an unknown command exits 1.
+- **Verification:** `packages/cli/tests/exit-codes.test.ts`.

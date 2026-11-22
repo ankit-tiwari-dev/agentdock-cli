@@ -1,14 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PolicyAction, PolicyMode, PolicyRule } from "../../core/src/index.ts";
 import type { RuleOverride } from "./evaluator.ts";
+import { ctrlplaneHome, pauseStatePath, projectPolicyPath } from "../../core/src/index.ts";
+import { BUILTIN_RULES } from "./catalog.ts";
 
 export interface PolicyConfigFile {
   version?: number;
   rules?: Record<string, RuleOverride>;
-  /** Module exporting `rules: PolicyRule[]`, relative to the project root. */
+  /** Module exporting `rules: PolicyRule[]`, relative to `CTRLPLANE_HOME`; honoured only in the user config. */
   customRulesFile?: string;
   loopBreaker?: {
     maxConsecutiveFailures?: number;
@@ -39,8 +41,17 @@ export interface ResolvedPolicyConfig {
 export type ConfigScope = "project" | "local" | "user";
 
 export function configPath(projectRoot: string, scope: ConfigScope): string {
-  if (scope === "user") return join(process.env.CTRLPLANE_HOME ?? join(homedir(), ".ctrlplane"), "policies.json");
-  return join(projectRoot, ".ctrlplane", scope === "local" ? "policies.local.json" : "policies.json");
+  if (scope === "user") return join(ctrlplaneHome(), "policies.json");
+  return projectPolicyPath(projectRoot, scope);
+}
+
+/** null for the user scope when `CTRLPLANE_HOME` is relative, so it counts as absent rather than read from the project. */
+function readablePath(projectRoot: string, scope: ConfigScope): string | null {
+  try {
+    return configPath(projectRoot, scope);
+  } catch {
+    return null;
+  }
 }
 
 function readConfigFile(path: string): PolicyConfigFile | null {
@@ -53,10 +64,75 @@ function readConfigFile(path: string): PolicyConfigFile | null {
   }
 }
 
+const warned = new Set<string>();
+
+function warnOnce(message: string): void {
+  if (warned.has(message)) return;
+  warned.add(message);
+  process.stderr.write(`[ctrlplane policy] ${message}\n`);
+}
+
+function isInside(dir: string, file: string): boolean {
+  const rel = relative(dir, file);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+/** Real path of the user config's custom rules module, or undefined when it resolves outside `CTRLPLANE_HOME`. */
+function userCustomRulesFile(configFile: string, name: string): string | undefined {
+  const target = resolve(dirname(configFile), name);
+  let inside: boolean;
+  let file = target;
+  try {
+    file = realpathSync(target);
+    inside = isInside(realpathSync(ctrlplaneHome()), file);
+  } catch {
+    // A module that does not exist yet loads nothing, but its path stays protected from agent writes.
+    inside = isInside(resolve(ctrlplaneHome()), target);
+  }
+  if (inside) return file;
+  warnOnce(`${configFile}: customRulesFile ${name} resolves outside ${ctrlplaneHome()} and is ignored.`);
+  return undefined;
+}
+
 const VALID_MODES: PolicyMode[] = ["enforce", "observe"];
 const VALID_ACTIONS: PolicyAction[] = ["ALLOW", "DENY", "INSTRUCT", "REQUIRE_MANUAL_APPROVAL"];
 
-/** Later scopes win: user < project < local (your own machine has the last word). */
+const STRICTNESS: Record<PolicyAction, number> = { ALLOW: 0, INSTRUCT: 1, REQUIRE_MANUAL_APPROVAL: 2, DENY: 3 };
+const softeningWarned = new Set<string>();
+
+/**
+ * The project file is committed with the repo, so anyone who can push to it could switch a rule
+ * off for every clone: from that scope only tightening fields survive, softening ones are dropped.
+ */
+function tightenOnly(id: string, o: RuleOverride, path: string): RuleOverride {
+  // A rule outside the catalog has no known default, so only the strictest action counts as tightening.
+  const defaultAction = BUILTIN_RULES.find((r) => r.id === id)?.action ?? "DENY";
+  const kept: RuleOverride = { ...o };
+  const dropped: string[] = [];
+  if (o.enabled === false) {
+    delete kept.enabled;
+    dropped.push("enabled: false");
+  }
+  if (o.mode === "observe") {
+    delete kept.mode;
+    dropped.push('mode: "observe"');
+  }
+  if (o.action !== undefined && STRICTNESS[o.action] < STRICTNESS[defaultAction]) {
+    delete kept.action;
+    dropped.push(`action: "${o.action}"`);
+  }
+  if (!dropped.length) return o;
+  const message =
+    `${path}: ignored ${dropped.join(", ")} for ${id}; the committed project file can only tighten rules. ` +
+    `Put it in .ctrlplane/policies.local.json or your user config (${join(ctrlplaneHome(), "policies.json")}).`;
+  if (!softeningWarned.has(message)) {
+    softeningWarned.add(message);
+    process.stderr.write(`[ctrlplane policy] ${message}\n`);
+  }
+  return kept;
+}
+
+/** Later scopes win: user < project < local (your own machine has the last word); project may only tighten. */
 export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
   const order: ConfigScope[] = ["user", "project", "local"];
   const resolved: ResolvedPolicyConfig = {
@@ -68,9 +144,9 @@ export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
   };
 
   for (const scope of order) {
-    const path = configPath(projectRoot, scope);
-    const file = readConfigFile(path);
-    if (!file) continue;
+    const path = readablePath(projectRoot, scope);
+    const file = path === null ? null : readConfigFile(path);
+    if (!file || path === null) continue;
     resolved.sources.push(path);
 
     for (const [id, o] of Object.entries(file.rules ?? {})) {
@@ -79,12 +155,16 @@ export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
         throw new Error(`${path}: rule ${id} has unknown mode '${o.mode}'`);
       if (o.action !== undefined && !VALID_ACTIONS.includes(o.action))
         throw new Error(`${path}: rule ${id} has unknown action '${o.action}'`);
+      const kept = scope === "project" ? tightenOnly(id, o, path) : o;
       const prev = resolved.overrides[id] ?? {};
-      resolved.overrides[id] = { ...prev, ...o, params: { ...(prev.params ?? {}), ...(o.params ?? {}) } };
+      resolved.overrides[id] = { ...prev, ...kept, params: { ...(prev.params ?? {}), ...(kept.params ?? {}) } };
     }
-    if (file.customRulesFile && scope !== "user") resolved.customRulesFile = resolve(projectRoot, file.customRulesFile);
+    if (file.customRulesFile && scope !== "user")
+      warnOnce(
+        `${path}: customRulesFile ignored; custom rules belong in the user config ${configPath(projectRoot, "user")}.`,
+      );
     if (file.customRulesFile && scope === "user")
-      resolved.customRulesFile = resolve(dirname(path), file.customRulesFile);
+      resolved.customRulesFile = userCustomRulesFile(path, file.customRulesFile);
     Object.assign(resolved.loopBreaker, file.loopBreaker ?? {});
     Object.assign(resolved.context, file.context ?? {});
     Object.assign(resolved.budget, file.budget ?? {});
@@ -97,7 +177,7 @@ export function configStamp(projectRoot: string): string {
   return (["user", "project", "local"] as ConfigScope[])
     .map((s) => {
       try {
-        return String(statSync(configPath(projectRoot, s)).mtimeMs);
+        return String(statSync(readablePath(projectRoot, s) ?? "").mtimeMs);
       } catch {
         return "-";
       }
@@ -154,7 +234,7 @@ export interface PauseState {
 }
 
 function pausePath(projectRoot: string): string {
-  return join(projectRoot, ".ctrlplane", "state", "pause.json");
+  return pauseStatePath(projectRoot);
 }
 
 /**

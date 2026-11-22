@@ -30,7 +30,7 @@ Read each changed file in full, not only the hunks. Grep each changed export to 
 - **One tsconfig:** no per-package `tsconfig.json`, no build step, no `dist/`.
 - **Hook budget:** code on the hook path answers within 1500 ms. No network call, no child process without a timeout, no regex on agent input that can backtrack (`ISSUE.md` → I-49).
 - **Fail-closed in CI:** with `CI=true` or `CTRLPLANE_MODE=ci`, a missing daemon still blocks (`packages/agent-adapters/src/hook-client.ts`). A new `catch` that turns an error into allow is a finding.
-- **Off-switch:** a new `ctrlplane` command or option that stops, pauses, weakens or uninstalls supervision, or writes what the next session is told, is in `isOffSwitch` (`packages/policy-engine/src/default-rules.ts`) with a test in `packages/policy-engine/tests/`.
+- **Off-switch:** a new `ctrlplane` command or option that stops, pauses, weakens or uninstalls supervision, or writes what the next session is told, is classified in `CLI_COMMAND_SAFETY` (`packages/policy-engine/src/default-rules.ts`); `command-safety.test.ts` fails otherwise.
 - **Shell rules** match the parsed words (`packages/policy-engine/src/shell.ts`, `argvVariants`), never the raw text alone.
 - **Context is information:** the context pack takes only an approved spec, the session's own captures and memory the developer added (`packages/context/src/pack.ts`). Nothing an agent controls may read as an instruction or forge a section (`ISSUE.md` → I-29).
 - **Nested runs:** any `claude -p` the code starts sets `CTRLPLANE_NESTED=1`.

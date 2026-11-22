@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { ctrlplaneDir, daemonLockPath } from "../../core/src/index.ts";
 
 /** Nearest directory at or above `start` that contains `.ctrlplane/`. */
 export function findProjectRoot(start: string): string | null {
   let dir = resolve(start);
   for (let i = 0; i < 64; i++) {
-    if (existsSync(join(dir, ".ctrlplane"))) return dir;
+    if (existsSync(ctrlplaneDir(dir))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -18,6 +19,8 @@ export interface DaemonLock {
   ipcTarget: string;
   startedAt?: number;
   version?: string;
+  /** Per-start secret a shutdown frame must carry; locks from older daemons have none. */
+  token?: string;
 }
 
 /**
@@ -29,7 +32,13 @@ export const DAEMON_UNAVAILABLE = "daemon-unavailable";
 export function isDaemonLock(value: unknown): value is DaemonLock {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  return Number.isInteger(v.pid) && (v.pid as number) > 0 && typeof v.ipcTarget === "string" && v.ipcTarget !== "";
+  return (
+    Number.isInteger(v.pid) &&
+    (v.pid as number) > 0 &&
+    typeof v.ipcTarget === "string" &&
+    v.ipcTarget !== "" &&
+    (v.token === undefined || typeof v.token === "string")
+  );
 }
 
 export function isProcessAlive(pid: number): boolean {
@@ -48,7 +57,7 @@ export function isProcessAlive(pid: number): boolean {
  * so `status` never reports a dead daemon as running.
  */
 export function getRunningDaemonLock(projectPath: string): DaemonLock | null {
-  const lockPath = join(projectPath, ".ctrlplane", "daemon.lock");
+  const lockPath = daemonLockPath(projectPath);
   if (!existsSync(lockPath)) return null;
 
   let parsed: unknown;

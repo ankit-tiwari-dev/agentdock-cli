@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+
 import type {
   AgentHookPayload,
   AgentType,
@@ -10,6 +10,7 @@ import type {
 } from "../../core/src/index.ts";
 import { StorageEngine } from "../../storage/src/index.ts";
 import { getRunningDaemonLock } from "./lock.ts";
+import { DEFAULT_SESSION_ID, auditDbPath, ctrlplaneDir } from "../../core/src/index.ts";
 
 /**
  * One audit row per hook call, built the same way whether the daemon or the hook process writes it,
@@ -28,7 +29,7 @@ export const EVENT_TYPE: Record<HookEventName, EventType> = {
   Notification: "notification",
 };
 
-export const DEFAULT_SESSION = "sess_default";
+export const DEFAULT_SESSION = DEFAULT_SESSION_ID;
 const NO_COMMIT = "0000000000000000000000000000000000000000";
 
 /** What the log says about a decision: an observe-mode hit is an ALLOW whose reason says what it would have done. */
@@ -84,10 +85,10 @@ export function recordWithoutDaemon(
   result: PolicyEvaluationResult,
   executionDurationMs: number,
 ): boolean {
-  if (!existsSync(join(projectRoot, ".ctrlplane")) || getRunningDaemonLock(projectRoot)) return false;
+  if (!existsSync(ctrlplaneDir(projectRoot)) || getRunningDaemonLock(projectRoot)) return false;
   const sessionId = payload.sessionId ?? DEFAULT_SESSION;
   const createdAt = Date.now();
-  const storage = new StorageEngine(join(projectRoot, ".ctrlplane", "audit.db"));
+  const storage = new StorageEngine(auditDbPath(projectRoot));
   try {
     storage.ensureSession({
       id: sessionId,

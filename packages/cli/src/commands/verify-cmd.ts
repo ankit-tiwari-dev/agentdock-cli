@@ -3,9 +3,10 @@ import { SpecManager } from "../../../intent/src/index.ts";
 import { StorageEngine } from "../../../storage/src/index.ts";
 import { parseUnifiedDiff } from "../../../git-analyzer/src/index.ts";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
-import type { CommandResult } from "./policies-cmd.ts";
+
+import type { CommandResult } from "./result.ts";
 import { readWorkingTreeDiff } from "./working-diff.ts";
+import { auditDbPath } from "../../../core/src/index.ts";
 
 /** Exit code 0 only for PASSED; NEEDS_ATTENTION (including checks that did not run) and FAILED exit 1. */
 export function handleVerifyCommand(options?: {
@@ -43,7 +44,7 @@ export function handleVerifyCommand(options?: {
 
   // Save report to audit database
   try {
-    const dbPath = join(projectPath, ".ctrlplane", "audit.db");
+    const dbPath = auditDbPath(projectPath);
     const storage = new StorageEngine(dbPath);
     storage.insertVerificationRun(report);
     storage.close();

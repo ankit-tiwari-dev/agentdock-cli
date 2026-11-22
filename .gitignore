@@ -13,6 +13,7 @@ Thumbs.db
 .ctrlplane/blobs/
 tmp-*
 tmp/
+coverage/
 
 # Environment files
 .env

@@ -30,8 +30,17 @@ export interface AgentHookPayload {
   stopHookActive?: boolean;
   /** Set when the call comes from a subagent rather than the main agent. */
   subagentId?: string;
-  /** Control frames are not hook calls; they manage the daemon itself. */
-  control?: "shutdown" | "ping";
+}
+
+/**
+ * Manages the daemon itself. Only `sendDaemonControl` builds one; the hook path never emits `kind`,
+ * so an agent's hook payload cannot turn into a control frame.
+ */
+export interface DaemonControlFrame {
+  kind: "control";
+  control: "shutdown" | "ping";
+  /** The per-start token from `daemon.lock`; a shutdown without the right one is refused. */
+  token?: string;
 }
 
 export interface HookVerdictResponse {

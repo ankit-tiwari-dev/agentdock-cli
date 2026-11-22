@@ -81,3 +81,26 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Decision:** after a Claude Code `Stop` or `SessionEnd`, the daemon reads that session's transcript and replaces the session's rows in `session_usage`: one row per model with token counts, cost at the catalog price of the day, an unknown-model flag and the turn count. No prompt, reply or file name is stored. The transcript path comes from the hook payload, so the file is read only when its real path (links resolved) is a `.jsonl` file of at most 50 MB under the real `~/.claude/projects`. It is streamed line by line and never read past 50 MB. A refused or failed read logs one line with the reason or error code and the session id, never the path, and keeps the earlier rows. The job waits until the session has been quiet for one second, runs off the hook's path and is never retried; the next Stop reads the whole file again. Hooks recorded without a daemon get no cost. `idx_events_created_at` is built by the daemon at start, not when the database opens.
 - **Why:** cost is per model because each model has its own price. Replacing instead of adding makes a second read of the same file harmless. A path an agent sends could point at any file, so it is checked after links are resolved. Parsing a large transcript takes tens of milliseconds of the daemon's time, so a burst of Stops is read once, after it ends, and the hook keeps its speed. Building an index holds the write lock; every hook process opens the database, so only the long-running daemon builds it.
 - **Cost:** cost appears about a second after Claude Code stops, and only while the daemon runs. Stored cost does not change when prices do; the token counts are kept so it can be recomputed later. Codex and OpenCode sessions get no cost until their transcripts can be parsed.
+
+## D-15 · CONSTRAINTS.md holds the merge bar, and new gates warn for two weeks first
+
+- **Decision:** `CONSTRAINTS.md` lists every check that decides whether a change can merge, with its number, the command that produces the verdict and where it runs. The coverage gate and the hook-latency check read their numbers from it, so a number is written in one place. A floor of moves that lower the bar (new suppression comments, stubs, skipped or deleted tests, removed assertions, a loosened threshold or a new exception) is checked on the diff after every agent edit and in CI, and blocks from the start. Changed-line coverage, architecture (dependency-cruiser, a dev dependency) and hook latency warn until 2026-12-05 and block after it. `.claude/settings.json` runs the floor after each edit and the task-end checks when an agent stops with uncommitted code changes.
+- **Why:** agents write more code than anyone reads line by line, so the bar has to live in checks that run inside their loop, with numbers chosen once instead of argued per PR. A threshold read from the file that documents it cannot drift from its documentation. Two weeks of warnings let the numbers, measured on one Windows machine, be checked against CI before they cost a red build; D-9's rule that every check blocks applies once the window ends.
+- **Cost:** CI's `constraints` job runs the suite a second time with coverage, and checks out the full history for the merge base. dependency-cruiser joins the dev dependencies that osv-scanner and Dependabot watch. The floor guard is a set of regular expressions: it catches the cheap ways to turn a check green, not a determined attempt to hide a change.
+
+## D-16 · A repo's own config can only tighten supervision
+
+- **Decision:**
+  - `.ctrlplane/policies.json`, the project file committed with the repo, can only tighten a rule. Turning a rule off, setting it to observe, or giving it a less strict action is ignored with a warning, and `policies disable|observe` write to `policies.local.json` instead.
+  - `customRulesFile` is read only from `$CTRLPLANE_HOME/policies.json`, and only as a real path inside `CTRLPLANE_HOME`.
+  - A relative `CTRLPLANE_HOME` is refused.
+  - A daemon control frame is built only by `sendDaemonControl`, and shutdown needs the token the daemon writes into `daemon.lock` at each start.
+- **Why:** a cloned repo, or an agent that writes its config, decides what that file says. Before this:
+  - the repo could switch off the secret-read and destructive-shell rules (ISSUE.md I-62);
+  - it could run its own code in the hook and the daemon (I-61);
+  - it could point user state into the project (I-67);
+  - and an agent could stop the daemon through its own hook payload (I-63).
+- **Cost:**
+  - A team can no longer ship a softer rule set in the repo; each developer sets it in `policies.local.json` or their user config.
+  - Custom rules move to the user config.
+  - Params such as allow lists can still be set from the project file.

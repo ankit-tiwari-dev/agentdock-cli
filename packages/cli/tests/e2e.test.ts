@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 test("FULL E2E INTEGRATION: Init -> Spec -> Supervise -> Block Tamper -> Verify -> Audit", async () => {
   const tmpProject = mkdtempSync(join(tmpdir(), "ctrlplane-e2e-"));
+  let daemon: SupervisorDaemon | undefined;
 
   try {
     // 1. Initialize project
@@ -22,11 +23,11 @@ test("FULL E2E INTEGRATION: Init -> Spec -> Supervise -> Block Tamper -> Verify 
     assert.ok(existsSync(join(tmpProject, ".claude", "settings.local.json")));
 
     // 2. Manage and approve specification
-    const specOutput = handleSpecCommand("approve", ["lead-architect"], tmpProject);
+    const specOutput = handleSpecCommand("approve", ["lead-architect"], tmpProject).output;
     assert.ok(specOutput.includes("Specification approved by 'lead-architect'"));
 
     // 3. Start Supervisor Daemon
-    const daemon = new SupervisorDaemon({
+    daemon = new SupervisorDaemon({
       projectPath: tmpProject,
       dbPath: join(tmpProject, ".ctrlplane", "audit.db"),
     });
@@ -93,16 +94,15 @@ new file mode 100644
       quiz: true,
     });
 
-    assert.ok(explainOutput.includes("CTRLPLANE DELTA EXPLANATION"));
-    assert.ok(explainOutput.includes("MODIFIED SYMBOLS & BLAST RADIUS"));
+    assert.ok(explainOutput.output.includes("CTRLPLANE DELTA EXPLANATION"));
+    assert.ok(explainOutput.output.includes("MODIFIED SYMBOLS & BLAST RADIUS"));
 
     // 8. Query Audit Trail
     const auditList = handleAuditCommand("list", [], tmpProject);
-    assert.ok(typeof auditList === "string");
-
-    // 9. Gracefully stop daemon
-    await daemon.stop();
+    assert.equal(auditList.exitCode, 0, auditList.output);
   } finally {
+    // A failed assertion above must not leave the daemon keeping the test process alive.
+    await daemon?.stop();
     try {
       rmSync(tmpProject, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     } catch {

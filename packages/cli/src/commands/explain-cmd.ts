@@ -1,7 +1,8 @@
 import { ExplanationEngine } from "../../../explanation/src/index.ts";
 import { readWorkingTreeDiff } from "./working-diff.ts";
+import { ok, type CommandResult } from "./result.ts";
 
-export function handleExplainCommand(options?: { diffUnified?: string; quiz?: boolean }): string {
+export function handleExplainCommand(options?: { diffUnified?: string; quiz?: boolean }): CommandResult {
   const engine = new ExplanationEngine();
   // Without a diff given, explain the working tree's changes against HEAD.
   const diff = options?.diffUnified ?? readWorkingTreeDiff(process.cwd()) ?? "";
@@ -52,5 +53,5 @@ export function handleExplainCommand(options?: { diffUnified?: string; quiz?: bo
   }
 
   lines.push("================================================================================");
-  return lines.join("\n");
+  return ok(lines.join("\n"));
 }

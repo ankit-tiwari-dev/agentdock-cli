@@ -87,3 +87,28 @@ test("pause shows in policies list, caps at 8h and resume clears it", async () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("regression: disable/observe default to the local file and refuse an explicit --project", async () => {
+  const dir = tempProject();
+  try {
+    const off = await handlePoliciesCommand("disable", ["RULE-BLOCK-SECRET-READS"], dir);
+    assert.equal(off.exitCode, 0);
+    assert.match(off.output, /policies\.local\.json/);
+    const local = JSON.parse(readFileSync(join(dir, ".ctrlplane", "policies.local.json"), "utf8"));
+    assert.equal(local.rules["RULE-BLOCK-SECRET-READS"].enabled, false);
+    assert.equal(existsSync(join(dir, ".ctrlplane", "policies.json")), false);
+
+    const refused = await handlePoliciesCommand("observe", ["RULE-BLOCK-DESTRUCTIVE-SHELL", "--project"], dir);
+    assert.equal(refused.exitCode, 2);
+    assert.match(refused.output, /--local/);
+    assert.match(refused.output, /--user/);
+    assert.equal(existsSync(join(dir, ".ctrlplane", "policies.json")), false);
+
+    const on = await handlePoliciesCommand("enforce", ["RULE-ASK-SUDO"], dir);
+    assert.equal(on.exitCode, 0);
+    assert.match(on.output, /policies\.json/);
+    assert.doesNotMatch(on.output, /policies\.local\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
