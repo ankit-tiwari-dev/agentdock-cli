@@ -507,6 +507,7 @@ export function shellTouchesProtected(
 ): string | null {
   let cwd = "";
   const vars = new Map<string, string>();
+  const samples = policy.samples.map((s) => resolveShellPath(s, projectRoot));
   for (const sub of subCommands) {
     const assign = shellAssignment(sub);
     if (assign) {
@@ -521,18 +522,56 @@ export function shellTouchesProtected(
     }
     const targets = shellWriteTargets(sub);
     if (targets === null) continue;
-    if (cwd && policy.isProtected(cwd)) return sub;
+    if (cwd && (policy.isProtected(cwd) || globMayReach(cwd, samples))) return sub;
     for (const word of targets) {
       if (isDynamicWord(word) && !/^\$\{?[A-Za-z_]|^\$env:|^\$\(pwd\)|^`pwd`/i.test(word)) continue;
-      const p = resolveShellPath(word, projectRoot, cwd, vars);
-      if (policy.isProtected(p)) return sub;
-      if (hasGlob(p)) {
-        const re = shellGlobRegExp(p);
-        if (policy.samples.some((s) => re.test(s))) return sub;
+      for (const expanded of expandBraces(word)) {
+        const p = resolveShellPath(expanded, projectRoot, cwd, vars);
+        if (policy.isProtected(p) || globMayReach(p, samples)) return sub;
       }
     }
   }
   return null;
+}
+
+/**
+ * The words bash brace expansion makes of `word`; a `{a..z}` range or more than 64 results becomes
+ * a `*`, which over-matches rather than lets a protected path through.
+ */
+export function expandBraces(word: string): string[] {
+  const open = word.indexOf("{");
+  if (open === -1) return [word];
+  let depth = 0;
+  let close = -1;
+  const commas: number[] = [];
+  for (let i = open; i < word.length && close === -1; i++) {
+    if (word[i] === "{") depth++;
+    else if (word[i] === "}" && --depth === 0) close = i;
+    else if (word[i] === "," && depth === 1) commas.push(i);
+  }
+  if (close === -1) return [word];
+  const head = word.slice(0, open);
+  const body = word.slice(open + 1, close);
+  const tails = expandBraces(word.slice(close + 1));
+  if (commas.length === 0 && !body.includes("..")) return tails.map((t) => `${head}{${body}}${t}`);
+  const bounds = [open, ...commas, close];
+  const parts =
+    commas.length === 0 ? ["*"] : bounds.slice(1).flatMap((end, i) => expandBraces(word.slice(bounds[i] + 1, end)));
+  const out = parts.flatMap((part) => tails.map((t) => head + part + t));
+  return out.length > 64 ? [`${head}*${word.slice(close + 1)}`] : out;
+}
+
+/**
+ * True when a glob path could expand to a protected sample or to anything inside one, compared
+ * segment by segment, because the shell expands `.ctrl?lane/x` to `.ctrlplane/x` before it runs.
+ */
+function globMayReach(path: string, samples: string[]): boolean {
+  if (!hasGlob(path)) return false;
+  const segs = path.split("/").map((seg) => shellGlobRegExp(seg));
+  return samples.some((sample) => {
+    const want = sample.split("/");
+    return want.length <= segs.length && want.every((seg, i) => segs[i].test(seg));
+  });
 }
 
 /**

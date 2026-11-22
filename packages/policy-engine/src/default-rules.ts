@@ -231,7 +231,7 @@ export function createSafetyRules(options: SafetyRuleOptions = {}): PolicyRule[]
             matchesAnyGlob(p, [CTRLPLANE_DIR, `${CTRLPLANE_DIR}/**`, ".git", ".git/**"]) ||
             isInside(p, home, root) ||
             isProtectedFile(p, root),
-          samples: [CTRLPLANE_DIR, ".git", ...protectedFiles],
+          samples: [CTRLPLANE_DIR, ".git", home, ...protectedFiles],
         };
         const sub = shellTouchesProtected(ctx.subCommands, root, policy);
         if (sub) {
