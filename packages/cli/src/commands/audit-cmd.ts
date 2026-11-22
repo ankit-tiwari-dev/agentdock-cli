@@ -1,8 +1,9 @@
 import { StorageEngine } from "../../../storage/src/index.ts";
-import { join } from "node:path";
+
+import { auditDbPath } from "../../../core/src/index.ts";
 
 export function handleAuditCommand(subcommand: string, args: string[], projectPath = process.cwd()): string {
-  const dbPath = join(projectPath, ".ctrlplane", "audit.db");
+  const dbPath = auditDbPath(projectPath);
   const storage = new StorageEngine(dbPath);
 
   try {

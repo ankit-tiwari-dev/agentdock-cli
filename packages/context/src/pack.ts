@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+
 import type { Specification } from "../../core/src/index.ts";
 import { parseSpecificationMarkdown } from "../../intent/src/spec-parser.ts";
 import type { ContextEntry, StorageEngine } from "../../storage/src/index.ts";
 import type { Capability } from "./capabilities.ts";
+import { specPath } from "../../core/src/index.ts";
 
 export interface SupervisionState {
   enforcing: number;
@@ -31,7 +32,7 @@ function cap(text: string, max: number): string {
 }
 
 function loadSpec(projectRoot: string): Specification | null {
-  const path = join(projectRoot, ".ctrlplane", "spec.md");
+  const path = specPath(projectRoot);
   if (!existsSync(path)) return null;
   try {
     return parseSpecificationMarkdown(readFileSync(path, "utf8"));

@@ -3,6 +3,7 @@ import { isAbsolute, join, posix, resolve } from "node:path";
 import { commandVariants, isDynamicWord, peelCommand, stripCommandPrefix, tokenize } from "./shell.ts";
 import { normalizeFsPath, toProjectPath, trimTrailing } from "./glob.ts";
 import { isSensitiveFile } from "../../git-analyzer/src/index.ts";
+import { ctrlplaneHome as userStateDir } from "../../core/src/index.ts";
 
 /** Words of the command that actually runs (wrappers peeled, program normalised), bash reading. */
 export function argv(sub: string): string[] {
@@ -434,7 +435,7 @@ export function shellAssignment(sub: string): { name: string; value: string } | 
 
 /** Where user-level supervisor config lives (`CTRLPLANE_HOME`, default `~/.ctrlplane`), forward slashes. */
 export function ctrlplaneHome(): string {
-  return (process.env.CTRLPLANE_HOME || join(homedir(), ".ctrlplane")).replace(/\\/g, "/").replace(/\/+$/, "");
+  return userStateDir().replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
 const VAR_REF =

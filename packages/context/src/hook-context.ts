@@ -1,14 +1,11 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+
 import type { AgentHookPayload } from "../../core/src/index.ts";
 import { buildProjectEngine, readPause, type ProjectEngine } from "../../policy-engine/src/index.ts";
 import { StorageEngine } from "../../storage/src/index.ts";
 import { buildContextPack, type SupervisionState } from "./pack.ts";
 import { ContextRecorder } from "./recorder.ts";
-
-export function auditDbPath(projectRoot: string): string {
-  return join(projectRoot, ".ctrlplane", "audit.db");
-}
+import { CONTEXT_EVENTS, DEFAULT_SESSION_ID, auditDbPath, ctrlplaneDir } from "../../core/src/index.ts";
 
 export function supervisionState(project: ProjectEngine, projectRoot: string): SupervisionState {
   let enforcing = 0;
@@ -42,16 +39,14 @@ export async function contextForHook(payload: AgentHookPayload, projectRoot: str
   }
 }
 
-const RECORDED_EVENTS = new Set(["UserPromptSubmit", "SessionStart", "PreCompact", "Stop", "SessionEnd"]);
-
 /** Records context in-process when no daemon is running. Never runs the model summary: the hook process must exit promptly. */
 export function recordWithoutDaemon(payload: AgentHookPayload, projectRoot: string): void {
-  if (!RECORDED_EVENTS.has(payload.hookEventName) || !existsSync(join(projectRoot, ".ctrlplane"))) return;
+  if (!CONTEXT_EVENTS.has(payload.hookEventName) || !existsSync(ctrlplaneDir(projectRoot))) return;
   const storage = new StorageEngine(auditDbPath(projectRoot));
   try {
     new ContextRecorder(storage, projectRoot, { allowAsync: false }).record(
       payload,
-      payload.sessionId ?? "sess_default",
+      payload.sessionId ?? DEFAULT_SESSION_ID,
     );
   } finally {
     storage.close();

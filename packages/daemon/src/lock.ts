@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { ctrlplaneDir, daemonLockPath } from "../../core/src/index.ts";
 
 /** Nearest directory at or above `start` that contains `.ctrlplane/`. */
 export function findProjectRoot(start: string): string | null {
   let dir = resolve(start);
   for (let i = 0; i < 64; i++) {
-    if (existsSync(join(dir, ".ctrlplane"))) return dir;
+    if (existsSync(ctrlplaneDir(dir))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -48,7 +49,7 @@ export function isProcessAlive(pid: number): boolean {
  * so `status` never reports a dead daemon as running.
  */
 export function getRunningDaemonLock(projectPath: string): DaemonLock | null {
-  const lockPath = join(projectPath, ".ctrlplane", "daemon.lock");
+  const lockPath = daemonLockPath(projectPath);
   if (!existsSync(lockPath)) return null;
 
   let parsed: unknown;

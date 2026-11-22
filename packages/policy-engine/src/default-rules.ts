@@ -20,6 +20,7 @@ import {
   type ShellPathPolicy,
 } from "./command-checks.ts";
 import { isDynamicWord, normalizeProgram } from "./shell.ts";
+import { CTRLPLANE_DIR } from "../../core/src/index.ts";
 
 /** Freezes an object graph so code loaded later (a custom rules module) cannot rewrite it. */
 export function deepFreeze<T>(value: T): T {
@@ -181,10 +182,10 @@ export function createSafetyRules(options: SafetyRuleOptions = {}): PolicyRule[]
           };
         const policy: ShellPathPolicy = {
           isProtected: (p) =>
-            matchesAnyGlob(p, [".ctrlplane", ".ctrlplane/**", ".git", ".git/**"]) ||
+            matchesAnyGlob(p, [CTRLPLANE_DIR, `${CTRLPLANE_DIR}/**`, ".git", ".git/**"]) ||
             isInside(p, home, root) ||
             isProtectedFile(p, root),
-          samples: [".ctrlplane", ".git", ...protectedFiles],
+          samples: [CTRLPLANE_DIR, ".git", ...protectedFiles],
         };
         const sub = shellTouchesProtected(ctx.subCommands, root, policy);
         if (sub) {

@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
-  auditDbPath,
   buildContextPack,
   renderCapabilities,
   scanCapabilities,
@@ -11,6 +10,7 @@ import {
 import { buildProjectEngine } from "../../../policy-engine/src/index.ts";
 import { StorageEngine } from "../../../storage/src/index.ts";
 import type { CommandResult } from "./policies-cmd.ts";
+import { auditDbPath, ctrlplaneDir } from "../../../core/src/index.ts";
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -18,7 +18,7 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 function withStorage<T>(root: string, fn: (s: StorageEngine) => T): T {
-  const dir = join(root, ".ctrlplane");
+  const dir = ctrlplaneDir(root);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const storage = new StorageEngine(auditDbPath(root));
   try {

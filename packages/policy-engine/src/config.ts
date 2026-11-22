@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PolicyAction, PolicyMode, PolicyRule } from "../../core/src/index.ts";
 import type { RuleOverride } from "./evaluator.ts";
+import { ctrlplaneHome, pauseStatePath, projectPolicyPath } from "../../core/src/index.ts";
 
 export interface PolicyConfigFile {
   version?: number;
@@ -39,8 +40,8 @@ export interface ResolvedPolicyConfig {
 export type ConfigScope = "project" | "local" | "user";
 
 export function configPath(projectRoot: string, scope: ConfigScope): string {
-  if (scope === "user") return join(process.env.CTRLPLANE_HOME ?? join(homedir(), ".ctrlplane"), "policies.json");
-  return join(projectRoot, ".ctrlplane", scope === "local" ? "policies.local.json" : "policies.json");
+  if (scope === "user") return join(ctrlplaneHome(), "policies.json");
+  return projectPolicyPath(projectRoot, scope);
 }
 
 function readConfigFile(path: string): PolicyConfigFile | null {
@@ -154,7 +155,7 @@ export interface PauseState {
 }
 
 function pausePath(projectRoot: string): string {
-  return join(projectRoot, ".ctrlplane", "state", "pause.json");
+  return pauseStatePath(projectRoot);
 }
 
 /**

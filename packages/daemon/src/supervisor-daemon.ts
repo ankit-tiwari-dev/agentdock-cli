@@ -1,5 +1,5 @@
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -28,6 +28,7 @@ import { IPCServer, type IPCEndpoint } from "./ipc-server.ts";
 import { findProjectRoot } from "./lock.ts";
 import { DEFAULT_SESSION, auditEventFor, auditEventId, describeOutcome } from "./audit-record.ts";
 import { UsageJobQueue, type UsageJobDeps } from "./usage-job.ts";
+import { auditDbPath, daemonLockPath } from "../../core/src/index.ts";
 
 export {
   DAEMON_UNAVAILABLE,
@@ -95,7 +96,7 @@ export class SupervisorDaemon {
     this.projectRoot = resolve(config.projectPath);
     this.startTime = Date.now();
 
-    this.dbPath = config.dbPath ?? join(this.projectRoot, ".ctrlplane", "audit.db");
+    this.dbPath = config.dbPath ?? auditDbPath(this.projectRoot);
     this.storage = new StorageEngine(this.dbPath);
     this.projectEngine = config.projectEngine ?? null;
     this.policyEngine =
@@ -115,7 +116,7 @@ export class SupervisorDaemon {
       warn: (line) => console.error(`[ctrlplane daemon] ${line}`),
     });
 
-    this.lockFilePath = join(this.projectRoot, ".ctrlplane", "daemon.lock");
+    this.lockFilePath = daemonLockPath(this.projectRoot);
 
     this.ipcServer = new IPCServer((payload) => this.handleHookPayload(payload), config.ipcPathOrPort);
   }

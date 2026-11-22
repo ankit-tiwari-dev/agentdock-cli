@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+
 import type { Specification } from "../../core/src/index.ts";
 import { parseSpecificationMarkdown } from "./spec-parser.ts";
 import { generateSpecTemplate } from "./spec-template.ts";
+import { ctrlplaneDir, specPath } from "../../core/src/index.ts";
 
 export class SpecManager {
   private projectPath: string;
@@ -10,7 +11,7 @@ export class SpecManager {
 
   constructor(projectPath: string) {
     this.projectPath = projectPath;
-    this.specFilePath = join(projectPath, ".ctrlplane", "spec.md");
+    this.specFilePath = specPath(projectPath);
   }
 
   public getSpecPath(): string {
@@ -22,7 +23,7 @@ export class SpecManager {
   }
 
   public init(title?: string, overview?: string): string {
-    const dir = join(this.projectPath, ".ctrlplane");
+    const dir = ctrlplaneDir(this.projectPath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }

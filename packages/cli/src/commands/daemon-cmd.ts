@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { SupervisorDaemon } from "../../../daemon/src/index.ts";
 import { getRunningDaemonLock, isProcessAlive, type DaemonLock } from "../../../daemon/src/lock.ts";
 import { sendDaemonControl } from "../../../agent-adapters/src/hook-client.ts";
+import { ctrlplaneDir, daemonLockPath } from "../../../core/src/index.ts";
 
 const BIN_PATH = fileURLToPath(new URL("../bin.ts", import.meta.url));
 
@@ -13,7 +14,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function lockPath(root: string): string {
-  return join(root, ".ctrlplane", "daemon.lock");
+  return daemonLockPath(root);
 }
 
 /** Removes the lock only if it still describes `lock` (a new daemon may have replaced it meanwhile). */
@@ -52,9 +53,9 @@ export async function handleStartDaemon(projectPath = process.cwd(), timeoutMs =
     return `Supervisor daemon is already running (PID: ${running.lock.pid}, IPC: ${running.lock.ipcTarget}).`;
   }
 
-  const ctrlplaneDir = join(root, ".ctrlplane");
-  if (!existsSync(ctrlplaneDir)) mkdirSync(ctrlplaneDir, { recursive: true });
-  const logFd = openSync(join(ctrlplaneDir, "daemon.log"), "a");
+  const stateDir = ctrlplaneDir(root);
+  if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
+  const logFd = openSync(join(stateDir, "daemon.log"), "a");
 
   const child = spawn(process.execPath, [BIN_PATH, "daemon-run", "--project", root], {
     cwd: root,
