@@ -104,3 +104,35 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - A team can no longer ship a softer rule set in the repo; each developer sets it in `policies.local.json` or their user config.
   - Custom rules move to the user config.
   - Params such as allow lists can still be set from the project file.
+
+## D-17 · AgentDock supervises agents; it never runs them
+
+- **Decision:**
+  - AgentDock is a local supervisor for coding agents that an agent harness (Claude Code, Codex, OpenCode) runs.
+  - **What AgentDock owns:**
+    - the verdict on each tool call;
+    - the audit trail;
+    - the session lifecycle as the harness reports it through hooks (start, stop, handoff, waiting for approval);
+    - the context a new session starts with.
+  - **What it does not do:**
+    - It does not start, schedule, retry or sandbox agents: no agent processes, containers, job queues, task graphs or scheduling.
+    - It is not a network proxy. It sees only what a harness's hooks report.
+    - It is not a secrets manager. The harness keeps its own credentials.
+    - It offers no SDK or middleware for developers who build their own agents.
+  - **Who it is for:**
+    - It is built for one developer using a harness on their own machine.
+    - A team stays possible later only through portable artifacts: the project policy committed with the repo (D-16) and an exported audit trail. No hosting, accounts or multi-tenancy are built.
+  - **The audit trail:** it is a local SQLite event log in `.ctrlplane/audit.db`, protected by policy rules. It is not called immutable unless tamper evidence, such as a hash chain, is built.
+  - **Naming:** AgentDock is not described as a "control plane" or an "orchestrator". The replacement tagline is still to choose: "Local Supervision and Safety Layer for Coding Agents" or "Local Agent Supervisor".
+  - **The editor extension** leaves the AgentDock repo; editor work, if it comes back, gets its own repo.
+- **Why:**
+  - The hook path is agent-neutral, and that is where AgentDock's value sits.
+  - Harnesses and agent frameworks already own execution, and change fast.
+  - A proxy, a secrets broker, an SDK and team hosting would each be a separate product with different competitors.
+  - The guard still has open gaps that matter more to a developer than any of those: `ISSUE.md` I-46 (shell forms the rules still allow) and I-48 (a crash in the hook allows the tool call outside CI).
+  - The extension has never loaded (AgentDock `ISSUE.md` I-6).
+- **Cost:**
+  - AgentDock depends on harnesses keeping their hook APIs, and cannot govern what no hook shows it.
+  - Developers building their own agents and teams wanting central policy are not served.
+  - Hardening the hook path, I-46 and I-48 first, comes before any new capability.
+  - Removing the extension, and changing the CLI help text and both READMEs to the new name, are follow-up tasks.
