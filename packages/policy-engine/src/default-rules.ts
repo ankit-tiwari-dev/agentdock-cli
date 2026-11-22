@@ -17,10 +17,22 @@ import {
   isInside,
   readsSensitiveFile,
   shellTouchesProtected,
+  stopsDaemon,
   type ShellPathPolicy,
 } from "./command-checks.ts";
 import { isDynamicWord, normalizeProgram } from "./shell.ts";
-import { CTRLPLANE_DIR } from "../../core/src/index.ts";
+import { readFileSync } from "node:fs";
+import { CTRLPLANE_DIR, daemonLockPath } from "../../core/src/index.ts";
+
+/** The running daemon's PID from its lock file, or undefined; read only when a command kills a literal PID. */
+function daemonPid(projectRoot: string): number | undefined {
+  try {
+    const pid = (JSON.parse(readFileSync(daemonLockPath(projectRoot), "utf8")) as { pid?: unknown } | null)?.pid;
+    return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Freezes an object graph so code loaded later (a custom rules module) cannot rewrite it. */
 export function deepFreeze<T>(value: T): T {
@@ -231,6 +243,18 @@ export function createSafetyRules(options: SafetyRuleOptions = {}): PolicyRule[]
         if (sub) {
           return {
             message: `Security Violation: Agents cannot edit or disable their own supervision hooks. (Triggered by command: '${sub}')`,
+          };
+        }
+        const stop = stopsDaemon(ctx.subCommands, () => daemonPid(ctx.projectRoot));
+        if (stop === "daemon") {
+          return {
+            message: `Security Violation: Agents cannot stop the AgentDock daemon. Stop the process you mean by its own name or PID. (Triggered by command: '${ctx.subCommands.join(" ; ")}')`,
+          };
+        }
+        if (stop === "every-node") {
+          return {
+            action: "REQUIRE_MANUAL_APPROVAL",
+            message: `This stops every Node process, including the AgentDock daemon and the developer's editor tools. Ask the developer, or stop the process you mean by its own name or PID. (Triggered by command: '${ctx.subCommands.join(" ; ")}')`,
           };
         }
         return null;

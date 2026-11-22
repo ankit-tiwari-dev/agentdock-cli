@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import type { PolicyRule, RuleContext } from "../../core/src/index.ts";
 import { DEFAULT_SAFETY_RULES, createSafetyRules, deepFreeze, type SafetyRuleOptions } from "./default-rules.ts";
-import { argv, gitSubcommand, runsDecodedText } from "./command-checks.ts";
+import { argv, gitSubcommand, runsDecodedText, setsHooksPath } from "./command-checks.ts";
 import { matchesAnyGlob } from "./glob.ts";
 import { splitShellSegments } from "./shell.ts";
 
@@ -272,7 +272,7 @@ export const EXTENDED_RULES: readonly PolicyRule[] = deepFreeze([
   {
     id: "RULE-GIT-NO-VERIFY",
     name: "Block skipping git hooks",
-    description: "`--no-verify` bypasses the project's lint and test gates.",
+    description: "`--no-verify`, or pointing `core.hooksPath` elsewhere, bypasses the project's lint and test gates.",
     event: "PreToolUse",
     category: "git",
     targetTools: ["Bash"],
@@ -282,10 +282,11 @@ export const EXTENDED_RULES: readonly PolicyRule[] = deepFreeze([
       const sub = firstSub(ctx, (s) => {
         const g = gitSubcommand(s);
         return (
-          !!g &&
-          (g.verb === "commit" || g.verb === "push" || g.verb === "merge") &&
-          (g.args.includes("--no-verify") ||
-            (g.verb === "commit" && g.args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a))))
+          setsHooksPath(s) ||
+          (!!g &&
+            (g.verb === "commit" || g.verb === "push" || g.verb === "merge") &&
+            (g.args.includes("--no-verify") ||
+              (g.verb === "commit" && g.args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a)))))
         );
       });
       return sub

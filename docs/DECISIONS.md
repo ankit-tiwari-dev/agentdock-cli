@@ -148,6 +148,7 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
     - The hook reads the pause state before it parses the payload, loads config or evaluates any rule.
     - The check uses nothing that can throw. If it fails anyway, the hook treats the project as not paused.
   - **While a pause is active, a crash allows the call.** This covers a crash anywhere: in parsing, config loading, or an always-on rule. Without a pause, a crash still denies.
+  - **In CI a crash always denies, pause or not.** No developer is there to have paused, and a crash there must fail the run.
   - **A call allowed this way is recorded.** It gets an audit row with verdict `ALLOW` and rule `CRASH-WHILE-PAUSED`, so the `audit.db` contract and the dashboard stay unchanged.
   - **What the row stores, under D-4:**
     - **If the redactor works:** the payload and the error message, both redacted.

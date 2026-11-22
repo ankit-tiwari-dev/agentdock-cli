@@ -313,15 +313,18 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 - **Fix:** a lookbehind lets the scheme start only at the start of a word.
 - **Verification:** `regression: a long run of letters is redacted in linear time` (`packages/storage/tests/redactor-regressions.test.ts`). It fails on the old code with `30728 ms for 200000 characters`.
 
-## I-46 · FOUND · Shell forms the supervision rules still allow
+## I-46 · FIXED · Shell forms the supervision rules still allowed
 
 - **Symptoms:** a deny-list can never be complete. Still allowed: `taskkill`/`pkill -f daemon-run`/`Stop-Process` against the daemon, `git config core.hooksPath` and `git -c core.hooksPath=...`, `git apply`, `rsync --delete ~/`, `shred -u`, the abbreviation `git reset --har`, secrets read from inside a `python -c`/`node -e` script, Grep or Glob over `.env*`, and heredoc bodies.
 - **Also:** a custom rules module runs in the hook process, so it can still patch globals such as `RegExp.prototype`, and the helper files it imports are not protected.
-- **Fix (decided, D-19):**
-  - **Close the cheap, likely forms:** killing the daemon (`taskkill`, `pkill -f daemon-run`, `Stop-Process`), `git config core.hooksPath` and `git -c core.hooksPath=...`, and a glob that reaches a nested `sub/.ctrlplane`.
-  - **Document the rest:** list them in the README as known limits of a deny-list, next to the statement that AgentDock is not a boundary against a hostile agent.
-  - **Not chased:** complete shell coverage.
-  - **Closes when:** both parts land.
+- **Fix (D-19):** the cheap, likely forms are closed, and the rest are listed in the README under "What it is not". Complete shell coverage is not chased.
+  - **Killing the daemon:** `stopsDaemon` (`packages/policy-engine/src/command-checks.ts`) is checked by `RULE-BLOCK-AGENT-SELF-TAMPER`, which is always on.
+    - **Denied:** `kill`, `pkill`, `killall`, `taskkill`, `Stop-Process` and `xargs kill` when the command names `daemon-run`, `ctrlplane` or `daemon.lock`, or targets the PID in `.ctrlplane/daemon.lock`. The lock is read only when a literal PID is given.
+    - **Asks first:** killing every Node process (`pkill node`, `taskkill /IM node.exe`, `Get-Process node | Stop-Process`).
+    - **Still allowed:** `kill -0`.
+  - **`core.hooksPath`:** `setsHooksPath` makes `RULE-GIT-NO-VERIFY` deny `git config` setting, unsetting or replacing it (any scope or case), `git -c core.hooksPath=…` and `--config-env`. Reading it stays allowed.
+  - **Nested `.ctrlplane` globs:** `globMayReach` now matches a relative protected path at any depth, as the literal check's unanchored globs already did, so `rm -rf sub/.ctrl*` is denied. The shell's dotfile rule still keeps `build/*` from matching.
+- **Verification:** `packages/policy-engine/tests/cheap-bypasses.test.ts`. Five `regression:` tests fail on the old rules. `ordinary process control stays allowed` pins `pkill -f vite`, `kill 1234`, `pgrep -f daemon-run` and other everyday commands.
 
 ## I-47 · FOUND · `ctrlplane verify` from the CLI can never pass
 
