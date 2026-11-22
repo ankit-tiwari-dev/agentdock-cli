@@ -51,5 +51,19 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // A daemon or server stopped inside `try` stays running when an earlier assertion throws, and the test
+    // process never exits (CLAUDE.md → Tests; the e2e hang fixed with exit codes in packages/cli).
+    files: ["packages/*/tests/**/*.ts", "scripts/tests/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TryStatement > BlockStatement.block CallExpression[callee.property.name='stop']",
+          message: "Stop a daemon or server in `finally`, not in `try`: a failed assertion would skip it.",
+        },
+      ],
+    },
+  },
   prettier,
 );
