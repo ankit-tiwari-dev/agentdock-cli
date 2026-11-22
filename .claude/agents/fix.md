@@ -35,7 +35,7 @@ Fix the described bug at its root. Do not commit unless asked.
 ## 5. Smallest fix
 
 - Change only what the root cause needs. No refactors, no renames, no cleanups.
-- Keep the `CLAUDE.md` invariants: erasable TypeScript, the 1500 ms hook budget, fail-closed in CI, `isOffSwitch` for anything that weakens supervision, context is information.
+- Keep the `CLAUDE.md` invariants: erasable TypeScript, the 1500 ms hook budget, fail-closed in CI, `CLI_COMMAND_SAFETY` for anything that weakens supervision, context is information.
 - Comments only for a non-obvious reason, one sentence.
 
 ## 6. Verify

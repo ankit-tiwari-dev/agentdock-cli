@@ -22,7 +22,7 @@ Find problems and record them. Fix nothing.
 Do the packages one after the other. For each, read every file in `src/` and `tests/`, then check:
 
 - **Agent input:** a regex that can backtrack on long input, a parse that can throw, a path that escapes the project.
-- **Supervision:** a path that allows on error, a missed fail-closed in CI, a `ctrlplane` command that weakens supervision and is missing from `isOffSwitch`, a shell rule that matches raw text only.
+- **Supervision:** a path that allows on error, a missed fail-closed in CI, a `ctrlplane` command that weakens supervision and is missing from `CLI_COMMAND_SAFETY`, a shell rule that matches raw text only.
 - **Exit codes:** a command that prints an error and exits 0.
 - **Files:** check-then-use races, writes into `process.cwd()`, state outside `CTRLPLANE_HOME` or `<project>/.ctrlplane/`.
 - **Secrets:** anything stored or logged before redaction.

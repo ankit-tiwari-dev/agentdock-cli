@@ -16,7 +16,7 @@ The code invariants that are easy to break. The how and why live in `docs/` (ind
 - Node runs `.ts` files directly by stripping the types, so only erasable TypeScript is allowed: no constructor parameter properties, no `enum`, no `namespace`, no `import x = require()`. Import sibling files with an explicit `.ts` ending.
 - One `tsconfig.json` at the root covers every package. Never add a per-package tsconfig (see `docs/PITFALLS.md` → P-3).
 - A hook must answer within its timeout (1500 ms by default). When no daemon answers, the hook runs the same rules in its own process (`packages/cli/src/commands/hook-cmd.ts`). In CI a missing daemon fails closed (`packages/agent-adapters/src/hook-client.ts`).
-- Agents must never be able to switch supervision off. Any new command that stops, pauses, weakens or uninstalls supervision, or writes what the next session is told, must be added to `isOffSwitch` in `packages/policy-engine/src/default-rules.ts`, with a test. Shell rules match the words as the shell will run them (`packages/policy-engine/src/shell.ts`), never the raw text.
+- Agents must never be able to switch supervision off. Any new command that stops, pauses, weakens or uninstalls supervision, or writes what the next session is told, must be classified in `CLI_COMMAND_SAFETY` in `packages/policy-engine/src/default-rules.ts`; `packages/cli/tests/command-safety.test.ts` fails on a command it does not list. Shell rules match the words as the shell will run them (`packages/policy-engine/src/shell.ts`), never the raw text.
 - Context given to an agent is information, never instructions. It comes only from an approved spec, the session's own captures and memory the developer added (`packages/context/src/pack.ts`).
 - Nested runs of `claude -p` (AI summaries) set `CTRLPLANE_NESTED=1`, and the hook returns at once for them. Without that, a summary would supervise itself in a loop.
 - User state lives under `CTRLPLANE_HOME` (default `~/.ctrlplane`), project state under `<project>/.ctrlplane/`. An in-memory store (`:memory:`) writes nothing inside the project.
@@ -27,6 +27,26 @@ The code invariants that are easy to break. The how and why live in `docs/` (ind
 - Anything that starts a server or daemon stops it in `finally`, or one failed assertion keeps the test process alive.
 - Every bug fix gets a regression test named `regression: ...` that fails on the old code.
 - Every package has at least one test file in `packages/<name>/tests/`.
+
+## Rules and what enforces them
+
+When the developer corrects a mistake, fix it and add its rule here. A rule whose enforcer is "nothing" is a judgment call; if its mistake happens again, enforce it at the highest level that works (one owner in the code, then a type, then a lint or CI check, then a test) in the same change, and drop the rule once the mistake cannot happen.
+
+| Rule                                                                                                    | Enforced by                                                                                    |
+| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Only erasable TypeScript                                                                                | `erasableSyntaxOnly` in `tsconfig.json` (`make typecheck`)                                     |
+| State paths, `CTRLPLANE_HOME`, the default session id and the context events come from one place        | `packages/core/src/paths.ts`; ESLint `no-restricted-syntax` names the function to use          |
+| The files AgentDock copies (redactor, keychain, supervisor-config, token-pricing) import only `node:`   | ESLint `no-restricted-imports`; AgentDock's `scripts/cli-copies.ts` checks the copies          |
+| Every `ctrlplane` command is classified as safe or an off-switch for agents                             | `CLI_COMMAND_SAFETY`; `packages/cli/tests/command-safety.test.ts`                              |
+| A command that fails exits non-zero                                                                     | `COMMANDS` in `cli.ts` only accepts a `CommandResult`; `packages/cli/tests/exit-codes.test.ts` |
+| A test stops a daemon or server in `finally`                                                            | ESLint on test files, for `.stop()`; `.close()` and `.kill()` are still a judgment call        |
+| No suppression comments, stubs, skipped or deleted tests, removed assertions, weakened `CONSTRAINTS.md` | `scripts/floor-guard.ts` (after each edit and in CI)                                           |
+| Every package has a test file; actions and images are pinned; no planning references                    | `scripts/hygiene.ts`                                                                           |
+| One root `tsconfig.json`                                                                                | nothing (happened once, P-3)                                                                   |
+| Shell rules match the words the shell will run, not the raw text                                        | nothing: judgment (`shell.ts` gives the words)                                                 |
+| Every filesystem test works in its own `mkdtemp` folder                                                 | nothing                                                                                        |
+| Every bug fix gets a `regression:` test that fails on the old code                                      | nothing: judgment                                                                              |
+| Never report a gate green from piped output                                                             | the Stop hook runs the task-end checks itself and reads their exit codes                       |
 
 ## Docs and history
 
