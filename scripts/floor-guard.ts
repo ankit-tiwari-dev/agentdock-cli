@@ -94,6 +94,8 @@ function ruleKey(text: string): string | null {
     if (!first || /^-+$/.test(first)) return null;
     return first;
   }
+  // A bullet led by a bold label explains a number; the numbers themselves live in table rows.
+  if (/^[-*] \*\*/.test(s)) return null;
   if (/^[-*] /.test(s)) return s.slice(2).split(":")[0].trim();
   return null;
 }
