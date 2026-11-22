@@ -42,7 +42,7 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 
 ## D-8 · Releases are GitHub Releases only
 
-- **Decision:** a `v*` tag runs every CI and security gate, then attaches a source archive of the tagged tree and its `SHA256SUMS` to a GitHub Release (`.github/workflows/release.yml`). Nothing is published to npm or an extension marketplace. The tag must equal `v` + the root `package.json` version.
+- **Decision:** a `v*` tag runs every CI and security gate, then attaches a source archive of the tagged tree and its `SHA256SUMS` to a GitHub Release (`.github/workflows/release.yml`). Nothing is published to npm or an extension marketplace. The tag must equal `v` + the root `package.json` version. The archive gets a signed build-provenance attestation (`actions/attest-build-provenance`), so `gh attestation verify` proves it was built by this workflow from the tagged commit; `SHA256SUMS` alone only proves the download is intact.
 - **Why a source archive:** the CLI imports the other packages by relative path, so the `cli` package alone would not run. The shipped code has no third-party runtime dependencies, so the archive plus Node is the whole install.
 - **Why:** one release channel to secure and support while the product is pre-1.0.
 
