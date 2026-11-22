@@ -91,6 +91,44 @@ test("regression: supervisor off-switches are caught after shell unquoting", () 
   );
 });
 
+test("regression: a ctrlplane command or sub-command the shell computes at run time is an off-switch", () => {
+  const engine = new PolicyEngine();
+  expectDecision(
+    engine,
+    [
+      "x=pause; ctrlplane $x",
+      "ctrlplane ${X:-stop}",
+      `ctrlplane "$(echo stop)"`,
+      "ctrlplane `echo stop`",
+      "ctrlplane st{o,}p",
+      "ctrlplane pau?e",
+      "ctrlplane [p]ause",
+      "ctrlplane po''licies disable RULE-ASK-SUDO",
+      "ctrlplane policies $v RULE-ASK-SUDO",
+      "ctrlplane memory ${OP}",
+      "ctrlplane handoff `echo note`",
+      "npx ctrlplane $x",
+      "node packages/cli/src/bin.ts $x",
+      "c=ctrlplane; $c $x",
+    ],
+    "DENY",
+    "RULE-BLOCK-AGENT-SELF-TAMPER",
+  );
+  expectDecision(
+    engine,
+    [
+      "ctrlplane status",
+      "ctrlplane policies list",
+      "ctrlplane handoff show",
+      "ctrlplane explain $id",
+      "echo $x",
+      "npm run $task",
+      "ls *.ts",
+    ],
+    "ALLOW",
+  );
+});
+
 test("regression: agents cannot re-run init, write a handoff or approve their own spec", () => {
   const engine = new PolicyEngine();
   expectDecision(
