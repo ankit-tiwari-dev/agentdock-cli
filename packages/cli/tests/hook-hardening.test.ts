@@ -60,7 +60,7 @@ const goneTarget = () =>
     ? `\\\\.\\pipe\\ctrlplane-gone-${process.pid}-${Date.now()}`
     : join(tmpdir(), `ctrlplane-gone-${process.pid}-${Date.now()}.sock`);
 
-test("regression: an unexpected error while evaluating PreToolUse is reported, and fails closed in CI", async () => {
+test("regression: an unexpected error while evaluating PreToolUse is reported, and fails closed locally and in CI", async () => {
   const dir = project("ctrlplane-hookcrash-");
   try {
     const stdin = JSON.stringify({
@@ -75,7 +75,7 @@ test("regression: an unexpected error while evaluating PreToolUse is reported, a
     const local = await withEnv({ CI: undefined, CTRLPLANE_MODE: undefined }, () =>
       runHook("PreToolUse", stdin, { cwd: dir, dispatch: crash }),
     );
-    assert.equal(local.exitCode, 0, "outside CI a crash still lets the call through");
+    assert.equal(local.exitCode, 2, "outside CI a crash blocks the call too (D-18)");
     assert.match(local.stderr ?? "", /boom in evaluation/);
 
     const ci = await withEnv({ CI: "true" }, () => runHook("PreToolUse", stdin, { cwd: dir, dispatch: crash }));
