@@ -208,3 +208,25 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - Anyone using these commands loses them; the README lists them today.
   - `ctrlplane explain` no longer quizzes the developer on a change.
   - Removing each command also removes its entry in `CLI_COMMAND_SAFETY`.
+
+## D-21 · AgentDock calls no model provider and holds no keys; supersedes D-13
+
+- **Decision:**
+  - AgentDock sends nothing to a model provider and stores no API keys.
+  - **Removed from the dashboard:**
+    - the AI explanation of a diff;
+    - with it, all of its provider stack: the Codex, Claude and OpenAI-compatible providers, `supervisor.json`, keychain reads, the `/api/supervisor/*` and `/api/reviewer/explain` routes, and the Settings page.
+  - **Removed from the CLI:** `ctrlplane supervisor` (`use`, `set-key`, `remove-key`, `status`) and the OS keychain code.
+  - The files AgentDock copied for them (`keychain.ts`, `supervisor-config.ts`) go too.
+  - In their place, the dashboard's diff view shows the deterministic summary `ctrlplane explain` computes: blast radius and dependency changes.
+  - This supersedes D-13. In AgentDock it supersedes D-3, D-9 and D-10, recorded there.
+- **Why:**
+  - The developer's own harness can already explain the diff it wrote. AgentDock's value is the neutral record and the guardrail, not a second model's opinion.
+  - Code never leaves the machine and no secret is held, which is what "local safety and audit layer" promises.
+  - The provider stack carried most of the security findings of the 2026-11-22 review, M1 and M2 among them.
+- **Cost:**
+  - About two weeks of provider work is retired.
+  - Developers lose a plain-language review inside the dashboard.
+  - **Not decided yet:**
+    - D-5's opt-in AI session summaries still run the local `claude -p`, which conflicts with "AgentDock calls no model";
+    - how the deterministic summary reaches the dashboard. The backend may not import CLI code (AgentDock D-10, its architecture rules), and the blast-radius code is not a standalone file that can be copied.
