@@ -148,7 +148,12 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
     - The hook reads the pause state before it parses the payload, loads config or evaluates any rule.
     - The check uses nothing that can throw. If it fails anyway, the hook treats the project as not paused.
   - **While a pause is active, a crash allows the call.** This covers a crash anywhere: in parsing, config loading, or an always-on rule. Without a pause, a crash still denies.
-  - **A call allowed this way is recorded.** It gets an audit row marked as allowed because of a crash during a pause, with the error. If writing the row fails, one line goes to stderr instead, and that failure does not crash the hook.
+  - **A call allowed this way is recorded.** It gets an audit row with verdict `ALLOW` and rule `CRASH-WHILE-PAUSED`, so the `audit.db` contract and the dashboard stay unchanged.
+  - **What the row stores, under D-4:**
+    - **If the redactor works:** the payload and the error message, both redacted.
+    - **If the redactor throws:** only the tool name, the payload's size in bytes, a SHA-256 of the payload and the error's type. No argument text.
+    - **Stack frames:** only AgentDock's own, with paths relative to AgentDock. No absolute paths, home folders, project files or command text.
+  - **If writing the row fails,** one stderr line with the same fields goes out instead. That failure never crashes the hook.
 - **Why:**
   - A crash is the one case where nothing judged the call, so allowing it would let an agent buy an unsupervised call by making the hook fail (D-17).
   - The other events run nothing, so failing them would lock the session without protecting anything.
@@ -157,6 +162,4 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Cost:**
   - A bad release stops every agent's tool calls until the developer pauses or fixes it.
   - During a pause, an agent that can make the hook crash gets that call unsupervised. Always-on rules no longer protect it, and it is only recorded.
-  - **Not decided yet:**
-    - what of the tool payload such a row stores, given D-4 (redaction before anything is written) and that the redactor itself may be what crashed;
-    - how the row is marked without a verdict value the dashboard does not know.
+  - When the redactor is what crashed, the record shows that a call ran but not what it contained.
