@@ -26,7 +26,7 @@ The daemon is an optimisation, not a dependency. Without it every hook still app
 
 ## Packages
 
-Dependencies only point downwards. `core` depends on nothing, and `cli` sits on top.
+Dependencies only point downwards. `core` depends on nothing, and `cli` sits on top. `.dependency-cruiser.mjs` holds the "Depends on" column as rules (`npm run check:arch`); change the two together.
 
 | Package          | What it owns                                                                                                                                                                            | Depends on                                   |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |

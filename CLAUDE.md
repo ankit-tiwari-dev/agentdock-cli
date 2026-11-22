@@ -4,6 +4,7 @@ The code invariants that are easy to break. The how and why live in `docs/` (ind
 
 ## Run everything through make
 
+- Read `CONSTRAINTS.md` before writing code. Do not weaken it to make a change pass. `make constraints` runs its checks; the hooks in `.claude/settings.json` run them after each edit and at task end.
 - `make ci` runs every gate CI runs, in the same order. Run it before you call work done.
 - `make lint`, `make typecheck`, `make hygiene`, `make test`: the single gates. Never report a gate green from piped output; read its exit code.
 - `make hygiene` (`scripts/hygiene.ts`) fails on tracked build output, CRLF in the index, unpinned workflow actions, lockfile drift, a package without tests, and names or planning references that must not appear in the repo.

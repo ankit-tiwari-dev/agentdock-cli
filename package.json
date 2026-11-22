@@ -14,11 +14,18 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "hygiene": "node scripts/hygiene.ts"
+    "hygiene": "node scripts/hygiene.ts",
+    "test:coverage": "node -e \"fs.mkdirSync('coverage', { recursive: true })\" && node --test --test-timeout=60000 --experimental-test-coverage --test-reporter=dot --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info packages/*/tests/*.test.ts scripts/tests/*.test.ts",
+    "check:floor": "node scripts/floor-guard.ts",
+    "check:coverage": "npm run --silent test:coverage && node scripts/warn-window.ts 2026-12-05 scripts/coverage-gate.ts coverage/lcov.info",
+    "check:arch": "node scripts/warn-window.ts 2026-12-05 node_modules/dependency-cruiser/bin/dependency-cruiser.mjs packages --config .dependency-cruiser.mjs --ignore-known .dependency-cruiser-known-violations.json --output-type err",
+    "check:hook-latency": "node scripts/warn-window.ts 2026-12-05 scripts/bench-hook.ts --check",
+    "check:task": "node scripts/agent-check.ts task"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "^22.20.5",
+    "dependency-cruiser": "18.7.2",
     "eslint": "10.15.0",
     "eslint-config-prettier": "10.1.8",
     "globals": "17.14.0",
