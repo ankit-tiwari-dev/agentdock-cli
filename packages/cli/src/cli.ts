@@ -41,8 +41,8 @@ SUPERVISOR COMMANDS:
 POLICY COMMANDS:
   policies list                       Every rule with its state (enforce/observe/off)
   policies show <id>                  One rule's description, outcome and params
-  policies enable|disable <id>        Switch a rule on or off      [--local|--user]
-  policies observe|enforce <id>       Log-only vs blocking mode    [--local|--user]
+  policies enable|disable <id>        Switch a rule on or off      [--local|--user]  (disable: local by default)
+  policies observe|enforce <id>       Log-only vs blocking mode    [--local|--user]  (observe: local by default)
   policies set <id> <param> <json>    Change a rule parameter      [--local|--user]
   policies test --command "<cmd>" [--expect deny|ask|instruct|allow]
                                       Dry-run a tool call; exits 1 if --expect fails

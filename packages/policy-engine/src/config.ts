@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { PolicyAction, PolicyMode, PolicyRule } from "../../core/src/index.ts";
 import type { RuleOverride } from "./evaluator.ts";
 import { ctrlplaneHome, pauseStatePath, projectPolicyPath } from "../../core/src/index.ts";
+import { BUILTIN_RULES } from "./catalog.ts";
 
 export interface PolicyConfigFile {
   version?: number;
@@ -87,7 +88,42 @@ function userCustomRulesFile(configFile: string, name: string): string | undefin
 const VALID_MODES: PolicyMode[] = ["enforce", "observe"];
 const VALID_ACTIONS: PolicyAction[] = ["ALLOW", "DENY", "INSTRUCT", "REQUIRE_MANUAL_APPROVAL"];
 
-/** Later scopes win: user < project < local (your own machine has the last word). */
+const STRICTNESS: Record<PolicyAction, number> = { ALLOW: 0, INSTRUCT: 1, REQUIRE_MANUAL_APPROVAL: 2, DENY: 3 };
+const softeningWarned = new Set<string>();
+
+/**
+ * The project file is committed with the repo, so anyone who can push to it could switch a rule
+ * off for every clone: from that scope only tightening fields survive, softening ones are dropped.
+ */
+function tightenOnly(id: string, o: RuleOverride, path: string): RuleOverride {
+  // A rule outside the catalog has no known default, so only the strictest action counts as tightening.
+  const defaultAction = BUILTIN_RULES.find((r) => r.id === id)?.action ?? "DENY";
+  const kept: RuleOverride = { ...o };
+  const dropped: string[] = [];
+  if (o.enabled === false) {
+    delete kept.enabled;
+    dropped.push("enabled: false");
+  }
+  if (o.mode === "observe") {
+    delete kept.mode;
+    dropped.push('mode: "observe"');
+  }
+  if (o.action !== undefined && STRICTNESS[o.action] < STRICTNESS[defaultAction]) {
+    delete kept.action;
+    dropped.push(`action: "${o.action}"`);
+  }
+  if (!dropped.length) return o;
+  const message =
+    `${path}: ignored ${dropped.join(", ")} for ${id}; the committed project file can only tighten rules. ` +
+    `Put it in .ctrlplane/policies.local.json or your user config (${join(ctrlplaneHome(), "policies.json")}).`;
+  if (!softeningWarned.has(message)) {
+    softeningWarned.add(message);
+    process.stderr.write(`[ctrlplane policy] ${message}\n`);
+  }
+  return kept;
+}
+
+/** Later scopes win: user < project < local (your own machine has the last word); project may only tighten. */
 export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
   const order: ConfigScope[] = ["user", "project", "local"];
   const resolved: ResolvedPolicyConfig = {
@@ -110,8 +146,9 @@ export function loadPolicyConfig(projectRoot: string): ResolvedPolicyConfig {
         throw new Error(`${path}: rule ${id} has unknown mode '${o.mode}'`);
       if (o.action !== undefined && !VALID_ACTIONS.includes(o.action))
         throw new Error(`${path}: rule ${id} has unknown action '${o.action}'`);
+      const kept = scope === "project" ? tightenOnly(id, o, path) : o;
       const prev = resolved.overrides[id] ?? {};
-      resolved.overrides[id] = { ...prev, ...o, params: { ...(prev.params ?? {}), ...(o.params ?? {}) } };
+      resolved.overrides[id] = { ...prev, ...kept, params: { ...(prev.params ?? {}), ...(kept.params ?? {}) } };
     }
     if (file.customRulesFile && scope !== "user")
       warnOnce(
