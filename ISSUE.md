@@ -59,7 +59,7 @@ Status flow: FOUND → IN PROGRESS → FIXED. Each entry: symptoms, root cause, 
 
 - **Symptoms:** a per-turn commit can pick up unrelated files, including secrets that are not ignored.
 - **Root cause:** `packages/git-analyzer/src/agent-commit-tracker.ts` runs `git add --all`. The product blocks that same command for agents (`RULE-GIT-STAGE-ALL` in `packages/policy-engine/src/catalog.ts`).
-- **Fix (proposed):** stage only the files the turn modified, as the backtracer or event log reports them.
+- **Fix (decided, D-20):** `ctrlplane commit` and `commitAgentTurn` are removed; AgentDock does not stage files or author commits. Closes when the removal lands.
 
 ## I-7 · FIXED · The README says MIT but there is no LICENSE file
 
@@ -326,7 +326,7 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 ## I-47 · FOUND · `ctrlplane verify` from the CLI can never pass
 
 - **Symptoms:** since I-33, a check with no command is `NOT RUN`, and the result is at best `NEEDS_ATTENTION` with exit 1. The CLI has no way to name the test, typecheck or lint command, so every CLI run exits 1.
-- **Fix (proposed):** the owner chooses where those commands are configured (for example `.ctrlplane/policies.json`). On Windows, `runShellCommand` in `packages/verifier/src/deterministic-runner.ts` also breaks a command that contains quotes; fix it at the same time.
+- **Fix (decided, D-20):** `ctrlplane verify` and the `verifier` package are removed; AgentDock does not grade an agent's work. Closes when the removal lands. (Superseded proposal: the owner chooses where those commands are configured, for example `.ctrlplane/policies.json`.) On Windows, `runShellCommand` in `packages/verifier/src/deterministic-runner.ts` also breaks a command that contains quotes; fix it at the same time.
 
 ## I-48 · FOUND · A crash in the hook still allows the tool call outside CI
 

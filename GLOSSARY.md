@@ -24,6 +24,18 @@ _Avoid_: run, conversation, job
 AgentDock judging an agent's tool calls and recording them, without running the agent.
 _Avoid_: orchestration, execution, control plane, sandbox, security boundary
 
+**Context pack**:
+The short background a new session starts with: the approved spec, recent intents, session summaries, handoff notes and project memory. It is information, never instructions.
+_Avoid_: system prompt, instructions, memory dump
+
+**Handoff note**:
+A note left for the next session about where the work stands.
+_Avoid_: summary, todo
+
+**Blast radius**:
+The exported symbols and files a change touches, and what depends on them.
+_Avoid_: impact analysis, risk score
+
 **Audit trail**:
 The local record of every tool call AgentDock saw and the verdict it gave, kept per project.
 _Avoid_: immutable log, ledger

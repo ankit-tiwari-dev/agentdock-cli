@@ -181,3 +181,30 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - An agent that sets out to evade AgentDock can.
   - Developers who need containment must add a sandbox themselves.
   - I-46 closes as documented limits plus a few targeted fixes, not as complete shell coverage.
+
+## D-20 · AgentDock keeps only what serves D-17; six features are removed
+
+- **Decision:**
+  - **Kept:**
+    - the policy rules and verdicts, `pause` and the loop breaker;
+    - the audit trail, with its search and timeline;
+    - the approval lifecycle ("Needs you", Waiting on you);
+    - the context pack: intents, session summaries, handoff notes, project memory, and the approved spec (D-6, D-10);
+    - session cost recorded by the daemon (D-14);
+    - `ctrlplane explain`, as a deterministic diff summary with blast radius and dependency changes.
+  - **Removed:**
+    - `ctrlplane verify` and the `verifier` package: AgentDock does not grade an agent's work;
+    - `ctrlplane commit`: AgentDock does not stage files or author commits;
+    - `ctrlplane coach`;
+    - `ctrlplane cost`;
+    - `ctrlplane backtrace`: the daemon stays the only reader of transcripts (D-14), so the parsing code it uses stays;
+    - the comprehension quiz in `ctrlplane explain`.
+  - **The dashboard:** it reviews what agents did: audit, timeline, approvals and the diff. It does not author plans: the Plan & review interview goes. Whether the AI explanation of a diff stays is not decided yet.
+- **Why:**
+  - Each removed feature sits outside the four things D-17 says AgentDock owns: verdicts, the audit trail, the session lifecycle, and session context.
+  - `verify` could never pass from the CLI (`ISSUE.md` I-47), and `commit` staged every file, secrets included (I-6).
+  - A smaller surface is less to secure, test and explain.
+- **Cost:**
+  - Anyone using these commands loses them; the README lists them today.
+  - `ctrlplane explain` no longer quizzes the developer on a change.
+  - Removing each command also removes its entry in `CLI_COMMAND_SAFETY`.
