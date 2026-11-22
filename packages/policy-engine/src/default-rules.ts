@@ -119,12 +119,20 @@ const SUPERVISOR_OFF_SWITCH = new RegExp(
   "i",
 );
 
+/** True when the shell runs the word as written: no expansion, substitution, glob or brace expansion. */
+function isLiteralWord(word: string): boolean {
+  return !/[$`*?[]|\{[^}]*(?:,|\.\.)[^}]*\}/.test(word);
+}
+
 /** True when `words` (the command after `ctrlplane`, options removed) is an off-switch in CLI_COMMAND_SAFETY. */
 function isOffSwitch(words: string[]): boolean {
   const [a, b] = words.map((w) => w.toLowerCase());
   if (a === undefined) return false;
+  // The shell picks the real command at run time, so a computed word could be any off-switch.
+  if (!isLiteralWord(a)) return true;
   const safety = Object.hasOwn(CLI_COMMAND_SAFETY, a) ? CLI_COMMAND_SAFETY[a] : undefined;
   if (safety === undefined || safety === "safe") return false;
+  if (b !== undefined && !isLiteralWord(b)) return true;
   if ("offSwitch" in safety) return safety.offSwitch === "all" || (b !== undefined && safety.offSwitch.includes(b));
   return b === undefined || !safety.safeOnly.includes(b);
 }
