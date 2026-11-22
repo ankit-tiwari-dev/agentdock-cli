@@ -254,6 +254,14 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - The dashboard reads the table like the rest of the audit trail. It runs no CLI and no `git`, so the read-only container needs neither.
   - `audit.db` stays the only contract between agentdock-cli and AgentDock.
   - The summary is kept with its session, so "what did that session change" still has an answer after later commits.
+  - **When it is taken:**
+    - 5 seconds after a session's last `Stop`. Each new `Stop` restarts the wait, so a burst of turns makes one computation, off the hook path.
+    - Each computation replaces the session's previous summary.
+    - A `SessionEnd`, sent only by Claude Code, runs the final computation at once.
+    - This gives Codex and OpenCode sessions a summary too, though they report no session end.
+  - **Limits:**
+    - `git diff` may run for 3 seconds; past that the summary is abandoned and recorded as `TIMED_OUT`.
+    - A change touching more than 500 files keeps only file-level counts, without symbol analysis, recorded as `TOO_LARGE`.
 - **Why:**
   - **Rejected: the backend running `ctrlplane explain --json`.** It would add a second contract between the repos and fail in the container (AgentDock D-4).
   - **Rejected: copying the explanation code into AgentDock.** It would duplicate logic, and that code is not standalone.
@@ -261,5 +269,5 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Cost:**
   - A session gets a summary only while the daemon runs (as with cost, D-14).
   - Computing it takes `git` time and some storage, so only the summary is stored.
-  - **Not decided yet:** when the summary is taken. `SessionEnd` is installed only for Claude Code; Codex and OpenCode report no session end, so a `SessionEnd`-only capture would leave their sessions without one.
+  - During a session the summary trails the latest turn by about 5 seconds.
   - **Not decided yet:** what the diff is measured against. A diff from the commit at session start includes every change made in that window, the developer's own included, not only the agent's.
