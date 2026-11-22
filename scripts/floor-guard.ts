@@ -238,6 +238,33 @@ export function collectDiff(base: string): string {
   return [tracked, ...untracked].join("\n");
 }
 
+export interface FloorException {
+  id: string;
+  rule: string;
+  expires: string;
+  matches: (file: string) => boolean;
+}
+
+/**
+ * Rows of the CONSTRAINTS.md Exceptions table whose Rule cell names a floor rule (e.g. `assertion-removed`) and
+ * that have not expired. Path holds one or more backticked globs. Adding a row is itself a `new-exception` finding,
+ * so an exception always reaches a reviewer.
+ */
+export function readExceptions(constraints: string, today: Date = new Date()): FloorException[] {
+  const day = today.toISOString().slice(0, 10);
+  const out: FloorException[] = [];
+  for (const line of constraints.split(/\r?\n/)) {
+    if (!EXCEPTION_ROW.test(line.trim())) continue;
+    const cells = line.split("|").map((c) => c.trim());
+    const [id, rule, path] = [cells[1], cells[2].replace(/`/g, ""), cells[3]];
+    const expires = cells[cells.length - 2];
+    if (!/^[a-z]+(-[a-z]+)+$/.test(rule) || !/^\d{4}-\d{2}-\d{2}$/.test(expires) || expires <= day) continue;
+    const globs = [...path.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+    out.push({ id, rule, expires, matches: ignoreMatcher(globs) });
+  }
+  return out;
+}
+
 export function main(argv: string[]): number {
   const i = argv.indexOf("--base");
   const base = i > -1 ? argv[i + 1] : "origin/main";
@@ -255,7 +282,14 @@ export function main(argv: string[]): number {
   const ignored = ignoreMatcher(
     existsSync(".constraintsignore") ? readFileSync(".constraintsignore", "utf8").split(/\r?\n/) : [],
   );
-  const findings = findFloorViolations(diff, ignored);
+  const exceptions = readExceptions(existsSync("CONSTRAINTS.md") ? readFileSync("CONSTRAINTS.md", "utf8") : "");
+  const findings: Finding[] = [];
+  for (const f of findFloorViolations(diff, ignored)) {
+    const excepted = exceptions.find((e) => e.rule === f.rule && e.matches(f.file));
+    if (excepted)
+      console.log(`floor-guard: [${f.rule}] ${f.file} excepted by ${excepted.id} until ${excepted.expires}`);
+    else findings.push(f);
+  }
   if (findings.length === 0) {
     console.log("floor-guard: clean");
     return 0;

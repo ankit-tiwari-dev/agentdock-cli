@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findFloorViolations, ignoreMatcher, main } from "../floor-guard.ts";
+import { findFloorViolations, ignoreMatcher, main, readExceptions } from "../floor-guard.ts";
 
 const GUARD = join(import.meta.dirname, "..", "floor-guard.ts");
 
@@ -142,6 +142,23 @@ test("flags an exception whose expiry was pushed out", () => {
     ["| W1 | arch | x | y | @dev | 2027-01-01 |"],
   );
   assert.deepEqual(rules(diff), ["exception-changed"]);
+});
+
+test("readExceptions honours an unexpired row naming a floor rule and its paths, and nothing else", () => {
+  const md = [
+    "| ID  | Rule              | Path                                   | Reason | Owner | Expires    |",
+    "| E1  | assertion-removed | `backend/tests/a.test.ts`, `x/**`      | gone   | @dev  | 2027-01-01 |",
+    "| E2  | assertion-removed | `old.test.ts`                          | gone   | @dev  | 2026-01-01 |",
+    "| W1  | Architecture: layer-daemon | `a.ts`                        | x      | @dev  | 2027-01-01 |",
+  ].join("\n");
+  const exceptions = readExceptions(md, new Date("2026-11-22T00:00:00Z"));
+  assert.deepEqual(
+    exceptions.map((e) => e.id),
+    ["E1"],
+  );
+  assert.equal(exceptions[0].matches("backend/tests/a.test.ts"), true);
+  assert.equal(exceptions[0].matches("x/y/z.test.ts"), true);
+  assert.equal(exceptions[0].matches("backend/tests/b.test.ts"), false);
 });
 
 test("ignoreMatcher exempts the listed globs only", () => {
