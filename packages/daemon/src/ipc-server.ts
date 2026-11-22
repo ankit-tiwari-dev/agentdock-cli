@@ -2,13 +2,15 @@ import { createServer, type Server, type Socket } from "node:net";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { unlinkSync, existsSync } from "node:fs";
-import type { AgentHookPayload, HookVerdictResponse } from "../../core/src/index.ts";
+import type { AgentHookPayload, DaemonControlFrame, HookVerdictResponse } from "../../core/src/index.ts";
 import { DAEMON_UNAVAILABLE } from "./lock.ts";
 
 /** Tool payloads can be large (whole file writes); anything past this is not a hook frame. */
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 
-export type HookHandler = (payload: AgentHookPayload) => Promise<HookVerdictResponse> | HookVerdictResponse;
+export type HookHandler = (
+  payload: AgentHookPayload | DaemonControlFrame,
+) => Promise<HookVerdictResponse> | HookVerdictResponse;
 
 export interface IPCEndpoint {
   path?: string;
@@ -62,7 +64,7 @@ export class IPCServer {
         if (!rawMessage.trim()) continue;
 
         try {
-          const payload: AgentHookPayload = JSON.parse(rawMessage);
+          const payload: AgentHookPayload | DaemonControlFrame = JSON.parse(rawMessage);
           const response = await this.hookHandler(payload);
           socket.write(JSON.stringify(response) + "\n");
         } catch (err) {

@@ -1,5 +1,5 @@
 import { createConnection, type Socket } from "node:net";
-import type { AgentHookPayload, HookVerdictResponse } from "../../core/src/index.ts";
+import type { AgentHookPayload, DaemonControlFrame, HookVerdictResponse } from "../../core/src/index.ts";
 import { DAEMON_UNAVAILABLE, findProjectRoot, getRunningDaemonLock } from "../../daemon/src/lock.ts";
 
 export { DAEMON_UNAVAILABLE };
@@ -132,11 +132,15 @@ function connectOptions(ipcTarget: string): { path: string } | { host: string; p
   return { host: m[1].replace(/^\[|\]$/g, ""), port };
 }
 
-/** Sends a control frame (ping / shutdown) to the daemon. Resolves null if it does not answer. */
+/**
+ * Sends a control frame (ping / shutdown) to the daemon; a shutdown needs the token from the
+ * daemon's lock. Resolves null if it does not answer.
+ */
 export function sendDaemonControl(
   ipcTarget: string,
   control: "ping" | "shutdown",
   timeoutMs = 1500,
+  token?: string,
 ): Promise<HookVerdictResponse | null> {
   const target = connectOptions(ipcTarget);
   if (!target) return Promise.resolve(null);
@@ -153,7 +157,8 @@ export function sendDaemonControl(
     const timer = setTimeout(() => finish(null), timeoutMs);
     try {
       client = createConnection(target, () => {
-        client?.write(JSON.stringify({ hookEventName: "Notification", cwd: "", control }) + "\n");
+        const frame: DaemonControlFrame = { kind: "control", control, token };
+        client?.write(JSON.stringify(frame) + "\n");
       });
     } catch {
       finish(null);
