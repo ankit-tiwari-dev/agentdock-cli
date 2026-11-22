@@ -56,8 +56,15 @@ const AGENT_HOOK_DIRS: readonly string[] = Object.freeze([
 
 const HOOK_CONFIG_PATHS = [...AGENT_HOOK_CONFIG_FILES, ...AGENT_HOOK_DIRS];
 
-/** Whether an agent may run a `ctrlplane` command: never, always, or only some of its sub-commands. */
-export type CommandSafety = "safe" | "off-switch" | { offSwitch: readonly string[] } | { safeOnly: readonly string[] };
+/**
+ * Whether an agent may run a `ctrlplane` command: always (`"safe"`), never (`offSwitch: "all"`), or not
+ * with some sub-commands. `matchInText: false` keeps a command out of the raw-text match, so a commit
+ * message or doc that names it stays allowed; run as a command, the shell-word check still catches it.
+ */
+export type CommandSafety =
+  | "safe"
+  | { offSwitch: "all" | readonly string[]; matchInText?: false }
+  | { safeOnly: readonly string[]; matchInText?: false };
 
 /**
  * Every `ctrlplane` command, with the sub-commands an agent must never run on itself: they stop, pause,
@@ -67,15 +74,15 @@ export type CommandSafety = "safe" | "off-switch" | { offSwitch: readonly string
  * `packages/cli/tests/command-safety.test.ts` fails when `cli.ts` has a command this table does not list.
  */
 export const CLI_COMMAND_SAFETY: Readonly<Record<string, CommandSafety>> = {
-  init: "off-switch",
-  stop: "off-switch",
-  pause: "off-switch",
-  uninstall: "off-switch",
+  init: { offSwitch: "all", matchInText: false },
+  stop: { offSwitch: "all" },
+  pause: { offSwitch: "all" },
+  uninstall: { offSwitch: "all" },
   policies: { offSwitch: ["disable", "off", "observe", "set"] },
   memory: { offSwitch: ["add", "rm"] },
-  spec: { offSwitch: ["approve"] },
+  spec: { offSwitch: ["approve"], matchInText: false },
   supervisor: { offSwitch: ["set-key", "remove-key", "use"] },
-  handoff: { safeOnly: ["show"] },
+  handoff: { safeOnly: ["show"], matchInText: false },
   resume: "safe",
   context: "safe",
   capabilities: "safe",
@@ -95,9 +102,10 @@ export const CLI_COMMAND_SAFETY: Readonly<Record<string, CommandSafety>> = {
 
 function offSwitchPattern(): string {
   const alternatives = Object.entries(CLI_COMMAND_SAFETY).flatMap(([name, safety]) => {
-    if (safety === "safe") return [];
-    if (safety === "off-switch") return [name];
-    if ("offSwitch" in safety) return [String.raw`${name}\s+(?:${safety.offSwitch.join("|")})`];
+    if (safety === "safe" || safety.matchInText === false) return [];
+    if ("offSwitch" in safety) {
+      return [safety.offSwitch === "all" ? name : String.raw`${name}\s+(?:${safety.offSwitch.join("|")})`];
+    }
     return [String.raw`${name}(?!\s+(?:${safety.safeOnly.join("|")})\b)`];
   });
   return `(?:${alternatives.join("|")})\\b`;
@@ -117,8 +125,7 @@ function isOffSwitch(words: string[]): boolean {
   if (a === undefined) return false;
   const safety = Object.hasOwn(CLI_COMMAND_SAFETY, a) ? CLI_COMMAND_SAFETY[a] : undefined;
   if (safety === undefined || safety === "safe") return false;
-  if (safety === "off-switch") return true;
-  if ("offSwitch" in safety) return b !== undefined && safety.offSwitch.includes(b);
+  if ("offSwitch" in safety) return safety.offSwitch === "all" || (b !== undefined && safety.offSwitch.includes(b));
   return b === undefined || !safety.safeOnly.includes(b);
 }
 

@@ -16,22 +16,14 @@ test("every command cli.ts dispatches is classified in CLI_COMMAND_SAFETY", () =
   );
 });
 
-test("regression: an off-switch inside an interpreter one-liner is caught for every listed command", () => {
-  // The raw-text pattern was a second, hand-kept list that lacked init, handoff and spec approve.
-  for (const command of [
-    "init",
-    "spec approve",
-    "handoff write note",
-    "stop",
-    "supervisor use claude",
-    "memory add x",
-  ]) {
-    assert.equal(
-      isSupervisorOffSwitch(`node -e "require('child_process').execSync('ctrlplane ${command}')"`),
-      true,
-      command,
-    );
+test("every off-switch is caught as a command, and inside a one-liner unless its entry says matchInText: false", () => {
+  for (const [name, safety] of Object.entries(CLI_COMMAND_SAFETY)) {
+    if (safety === "safe") continue;
+    const command =
+      "offSwitch" in safety ? (safety.offSwitch === "all" ? name : `${name} ${safety.offSwitch[0]}`) : `${name} write`;
     assert.equal(isSupervisorOffSwitch(`ctrlplane ${command}`), true, command);
+    const inText = isSupervisorOffSwitch(`node -e "require('child_process').execSync('ctrlplane ${command}')"`);
+    assert.equal(inText, safety.matchInText !== false, `${command} inside a one-liner`);
   }
 });
 
