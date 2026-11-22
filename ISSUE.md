@@ -59,7 +59,7 @@ Status flow: FOUND → IN PROGRESS → FIXED. Each entry: symptoms, root cause, 
 
 - **Symptoms:** a per-turn commit can pick up unrelated files, including secrets that are not ignored.
 - **Root cause:** `packages/git-analyzer/src/agent-commit-tracker.ts` runs `git add --all`. The product blocks that same command for agents (`RULE-GIT-STAGE-ALL` in `packages/policy-engine/src/catalog.ts`).
-- **Fix (proposed):** stage only the files the turn modified, as the backtracer or event log reports them.
+- **Fix (decided, D-20):** `ctrlplane commit` and `commitAgentTurn` are removed; AgentDock does not stage files or author commits. Closes when the removal lands.
 
 ## I-7 · FIXED · The README says MIT but there is no LICENSE file
 
@@ -317,18 +317,22 @@ Covers ISSUE.md I-11 (the verification report always says lint passed): lint now
 
 - **Symptoms:** a deny-list can never be complete. Still allowed: `taskkill`/`pkill -f daemon-run`/`Stop-Process` against the daemon, `git config core.hooksPath` and `git -c core.hooksPath=...`, `git apply`, `rsync --delete ~/`, `shred -u`, the abbreviation `git reset --har`, secrets read from inside a `python -c`/`node -e` script, Grep or Glob over `.env*`, and heredoc bodies.
 - **Also:** a custom rules module runs in the hook process, so it can still patch globals such as `RegExp.prototype`, and the helper files it imports are not protected.
-- **Fix (proposed):** cover the daemon-kill and `core.hooksPath` forms next. Treat the rest as limits of a command deny-list and say so in the README.
+- **Fix (decided, D-19):**
+  - **Close the cheap, likely forms:** killing the daemon (`taskkill`, `pkill -f daemon-run`, `Stop-Process`), `git config core.hooksPath` and `git -c core.hooksPath=...`, and a glob that reaches a nested `sub/.ctrlplane`.
+  - **Document the rest:** list them in the README as known limits of a deny-list, next to the statement that AgentDock is not a boundary against a hostile agent.
+  - **Not chased:** complete shell coverage.
+  - **Closes when:** both parts land.
 
 ## I-47 · FOUND · `ctrlplane verify` from the CLI can never pass
 
 - **Symptoms:** since I-33, a check with no command is `NOT RUN`, and the result is at best `NEEDS_ATTENTION` with exit 1. The CLI has no way to name the test, typecheck or lint command, so every CLI run exits 1.
-- **Fix (proposed):** the owner chooses where those commands are configured (for example `.ctrlplane/policies.json`). On Windows, `runShellCommand` in `packages/verifier/src/deterministic-runner.ts` also breaks a command that contains quotes; fix it at the same time.
+- **Fix (decided, D-20):** `ctrlplane verify` and the `verifier` package are removed; AgentDock does not grade an agent's work. Closes when the removal lands. (Superseded proposal: the owner chooses where those commands are configured, for example `.ctrlplane/policies.json`.) On Windows, `runShellCommand` in `packages/verifier/src/deterministic-runner.ts` also breaks a command that contains quotes; fix it at the same time.
 
 ## I-48 · FOUND · A crash in the hook still allows the tool call outside CI
 
 - **Symptoms:** an unexpected exception while evaluating PreToolUse prints `[ctrlplane hook error] ...` and exits 0, so the call runs unchecked. In CI it exits 2.
 - **Root cause:** fail-open was the original behaviour, and changing it can stop every agent action whenever the hook has a bug.
-- **Fix (proposed):** the owner decides between fail-open and fail-closed for local runs (`packages/cli/src/commands/hook-cmd.ts`).
+- **Fix (decided, D-18):** `PreToolUse` fails closed locally too, with a message naming the error and `ctrlplane pause`; other hook events fail open with a `[ctrlplane warning]` line. Not implemented yet, and how the pause stays a reliable way out is still open (D-18 → Cost).
 
 ## I-49 · FIXED · Regexes on agent input backtracked quadratically and could overrun the hook's 1500 ms budget
 

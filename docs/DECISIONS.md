@@ -104,3 +104,176 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
   - A team can no longer ship a softer rule set in the repo; each developer sets it in `policies.local.json` or their user config.
   - Custom rules move to the user config.
   - Params such as allow lists can still be set from the project file.
+
+## D-17 · AgentDock supervises agents; it never runs them
+
+- **Decision:**
+  - AgentDock is a local supervisor for coding agents that an agent harness (Claude Code, Codex, OpenCode) runs.
+  - **What AgentDock owns:**
+    - the verdict on each tool call;
+    - the audit trail;
+    - the session lifecycle as the harness reports it through hooks (start, stop, handoff, waiting for approval);
+    - the context a new session starts with.
+  - **What it does not do:**
+    - It does not start, schedule, retry or sandbox agents: no agent processes, containers, job queues, task graphs or scheduling.
+    - It is not a network proxy. It sees only what a harness's hooks report.
+    - It is not a secrets manager. The harness keeps its own credentials.
+    - It offers no SDK or middleware for developers who build their own agents.
+  - **Who it is for:**
+    - It is built for one developer using a harness on their own machine.
+    - A team stays possible later only through portable artifacts: the project policy committed with the repo (D-16) and an exported audit trail. No hosting, accounts or multi-tenancy are built.
+  - **The audit trail:** it is a local SQLite event log in `.ctrlplane/audit.db`, protected by policy rules. It is not called immutable unless tamper evidence, such as a hash chain, is built.
+  - **Naming:** AgentDock is "the local safety and audit layer for AI coding agents". It is not described as a "control plane" or an "orchestrator".
+  - **The editor extension** leaves the AgentDock repo; editor work, if it comes back, gets its own repo.
+- **Why:**
+  - The hook path is agent-neutral, and that is where AgentDock's value sits.
+  - Harnesses and agent frameworks already own execution, and change fast.
+  - A proxy, a secrets broker, an SDK and team hosting would each be a separate product with different competitors.
+  - The guard still has open gaps that matter more to a developer than any of those: `ISSUE.md` I-46 (shell forms the rules still allow) and I-48 (a crash in the hook allows the tool call outside CI).
+  - The extension has never loaded (AgentDock `ISSUE.md` I-6).
+- **Cost:**
+  - AgentDock depends on harnesses keeping their hook APIs, and cannot govern what no hook shows it.
+  - Developers building their own agents and teams wanting central policy are not served.
+  - Hardening the hook path, I-46 and I-48 first, comes before any new capability.
+  - Removing the extension, and changing the CLI help text and both READMEs to the new name, are follow-up tasks.
+
+## D-18 · A crash in the hook blocks the tool call, and only the developer can get past it
+
+- **Decision:**
+  - When the hook fails unexpectedly while judging a `PreToolUse` call, it denies the call, locally as in CI.
+  - The denial names the error and the way out: "Run 'ctrlplane pause' in your terminal to temporarily bypass, or report this bug."
+  - Agents stay unable to run `ctrlplane pause` themselves (D-6, `CLI_COMMAND_SAFETY`).
+  - A crash in any other hook event (prompt submit, session start, stop, `PostToolUse`) lets the event through and prints a `[ctrlplane warning] ...` line on stderr.
+  - **The pause is the way out, and it is checked first.**
+    - The hook reads the pause state before it parses the payload, loads config or evaluates any rule.
+    - The check uses nothing that can throw. If it fails anyway, the hook treats the project as not paused.
+  - **While a pause is active, a crash allows the call.** This covers a crash anywhere: in parsing, config loading, or an always-on rule. Without a pause, a crash still denies.
+  - **A call allowed this way is recorded.** It gets an audit row with verdict `ALLOW` and rule `CRASH-WHILE-PAUSED`, so the `audit.db` contract and the dashboard stay unchanged.
+  - **What the row stores, under D-4:**
+    - **If the redactor works:** the payload and the error message, both redacted.
+    - **If the redactor throws:** only the tool name, the payload's size in bytes, a SHA-256 of the payload and the error's type. No argument text.
+    - **Stack frames:** only AgentDock's own, with paths relative to AgentDock. No absolute paths, home folders, project files or command text.
+  - **If writing the row fails,** one stderr line with the same fields goes out instead. That failure never crashes the hook.
+- **Why:**
+  - A crash is the one case where nothing judged the call, so allowing it would let an agent buy an unsupervised call by making the hook fail (D-17).
+  - The other events run nothing, so failing them would lock the session without protecting anything.
+  - The pause has to be read before anything that can crash, or the way out the message names would not work.
+  - Allowing crashes only during a pause keeps them developer-only, because agents cannot start a pause.
+- **Cost:**
+  - A bad release stops every agent's tool calls until the developer pauses or fixes it.
+  - During a pause, an agent that can make the hook crash gets that call unsupervised. Always-on rules no longer protect it, and it is only recorded.
+  - When the redactor is what crashed, the record shows that a call ran but not what it contained.
+
+## D-19 · AgentDock catches mistakes; it is not a boundary against a hostile agent
+
+- **Decision:**
+  - AgentDock's promise is a guardrail: it catches the destructive things agents do by mistake or by being over-eager, and keeps the record. Examples: recursive deletes, force pushes and branch clobbering, reading secret files, edits to its own state.
+  - It is not a sandbox, and does not claim to contain an agent that is deliberately trying to evade supervision. That containment belongs to the OS, a container, or the harness's own sandbox, and the README says so plainly.
+  - Rules stay a deny-list.
+  - Known evasion forms are closed when they are cheap and likely; the rest are listed as known limits.
+  - Strict allow-listing ("ask before any command not explicitly allowed") is not built now; it may come later if users ask for it.
+- **Why:**
+  - A deny-list over shell commands can never be complete (`ISSUE.md` I-46), and only an OS-level sandbox truly contains a shell.
+  - Agents cause harm by mistake far more often than by attack.
+  - A promise the code can keep is worth more than a broader one it cannot.
+  - Strict allow-listing would mean an approval prompt on ordinary work.
+- **Cost:**
+  - An agent that sets out to evade AgentDock can.
+  - Developers who need containment must add a sandbox themselves.
+  - I-46 closes as documented limits plus a few targeted fixes, not as complete shell coverage.
+
+## D-20 · AgentDock keeps only what serves D-17; six features are removed
+
+- **Decision:**
+  - **Kept:**
+    - the policy rules and verdicts, `pause` and the loop breaker;
+    - the audit trail, with its search and timeline;
+    - the approval lifecycle ("Needs you", Waiting on you);
+    - the context pack: intents, session summaries, handoff notes, project memory, and the approved spec (D-6, D-10);
+    - session cost recorded by the daemon (D-14);
+    - `ctrlplane explain`, as a deterministic diff summary with blast radius and dependency changes.
+  - **Removed:**
+    - `ctrlplane verify` and the `verifier` package: AgentDock does not grade an agent's work;
+    - `ctrlplane commit`: AgentDock does not stage files or author commits;
+    - `ctrlplane coach`;
+    - `ctrlplane cost`;
+    - `ctrlplane backtrace`: the daemon stays the only reader of transcripts (D-14), so the parsing code it uses stays;
+    - the comprehension quiz in `ctrlplane explain`.
+  - **The dashboard:** it reviews what agents did: audit, timeline, approvals and the diff. It does not author plans: the Plan & review interview goes. Whether the AI explanation of a diff stays is not decided yet.
+- **Why:**
+  - Each removed feature sits outside the four things D-17 says AgentDock owns: verdicts, the audit trail, the session lifecycle, and session context.
+  - `verify` could never pass from the CLI (`ISSUE.md` I-47), and `commit` staged every file, secrets included (I-6).
+  - A smaller surface is less to secure, test and explain.
+- **Cost:**
+  - Anyone using these commands loses them; the README lists them today.
+  - `ctrlplane explain` no longer quizzes the developer on a change.
+  - Removing each command also removes its entry in `CLI_COMMAND_SAFETY`.
+
+## D-21 · AgentDock calls no model provider and holds no keys; supersedes D-13
+
+- **Decision:**
+  - AgentDock sends nothing to a model provider and stores no API keys.
+  - **Removed from the dashboard:**
+    - the AI explanation of a diff;
+    - with it, all of its provider stack: the Codex, Claude and OpenAI-compatible providers, `supervisor.json`, keychain reads, the `/api/supervisor/*` and `/api/reviewer/explain` routes, and the Settings page.
+  - **Removed from the CLI:** `ctrlplane supervisor` (`use`, `set-key`, `remove-key`, `status`) and the OS keychain code.
+  - The files AgentDock copied for them (`keychain.ts`, `supervisor-config.ts`) go too.
+  - In their place, the dashboard's diff view shows the deterministic summary `ctrlplane explain` computes: blast radius and dependency changes.
+  - This supersedes D-13. In AgentDock it supersedes D-3, D-9 and D-10, recorded there.
+- **Why:**
+  - The developer's own harness can already explain the diff it wrote. AgentDock's value is the neutral record and the guardrail, not a second model's opinion.
+  - Code never leaves the machine and no secret is held, which is what "local safety and audit layer" promises.
+  - The provider stack carried most of the security findings of the 2026-11-22 review, M1 and M2 among them.
+- **Cost:**
+  - About two weeks of provider work is retired.
+  - Developers lose a plain-language review inside the dashboard.
+  - D-5's opt-in AI session summaries also called a model; D-22 removes them.
+  - How the deterministic summary reaches the dashboard: D-23.
+
+## D-22 · Session summaries are deterministic only, and the nested-run bypass goes; supersedes D-5
+
+- **Decision:**
+  - Session summaries come only from the audit trail: the tools a session ran, what was denied or asked, files touched and how calls ended. Every line is neutralised (`inertLine`) so it cannot read as an instruction.
+  - **Removed:** the opt-in `aiSummaries` setting, the `claude -p` summary run, and their tests.
+  - **Removed with them:** `CTRLPLANE_NESTED`. The summary run was its only producer and the hook's early return its only consumer.
+  - AgentDock now has no path, direct or through a subprocess, that calls a model (D-21).
+  - This supersedes D-5.
+- **Why:**
+  - A model-written summary is the part of the context pack hardest to keep inert, and it enters the next session (D-6).
+  - Deterministic summaries match "local and deterministic" (D-21).
+  - `CTRLPLANE_NESTED=1` made the hook return at once for any process that set it. That bypass has no purpose once no summary run exists.
+- **Cost:**
+  - Summaries say what happened, not why; handoff notes carry the why.
+  - A config that still sets `context.aiSummaries` needs a defined behaviour; the removal issue proposes ignoring it with a warning.
+
+## D-23 · The daemon records each session's change summary in `audit.db`; the dashboard only reads it
+
+- **Decision:**
+  - The daemon computes a session's change summary and writes it to a new table in `.ctrlplane/audit.db`. The summary is the structured output of the `explain` engine: files changed with line counts, exported symbols touched and their blast radius, dependency and config changes, and a risk level.
+  - Only that structured summary is stored, never a patch or file contents.
+  - The dashboard reads the table like the rest of the audit trail. It runs no CLI and no `git`, so the read-only container needs neither.
+  - `audit.db` stays the only contract between agentdock-cli and AgentDock.
+  - The summary is kept with its session, so "what did that session change" still has an answer after later commits.
+  - **When it is taken:**
+    - 5 seconds after a session's last `Stop`. Each new `Stop` restarts the wait, so a burst of turns makes one computation, off the hook path.
+    - Each computation replaces the session's previous summary.
+    - A `SessionEnd`, sent only by Claude Code, runs the final computation at once.
+    - This gives Codex and OpenCode sessions a summary too, though they report no session end.
+  - **What it measures:**
+    - The diff runs from the commit recorded at session start (`base_commit_sha`) to the working tree at the moment of capture.
+    - Each file is marked either as touched by this session (its `Edit` or `Write` calls, or a shell write target the policy engine resolved) or as changed in the window by something else: the developer, another session, or a tool.
+    - The dashboard shows both marks. It never calls a window change the agent's.
+  - **No baseline, no summary:** with no known starting commit (the `0000…` placeholder) or outside a git repository, the row records `NO_BASE`, stores no diff, and the daemon logs one warning.
+  - **Limits:**
+    - `git diff` may run for 3 seconds; past that the summary is abandoned and recorded as `TIMED_OUT`.
+    - A change touching more than 500 files keeps only file-level counts, without symbol analysis, recorded as `TOO_LARGE`.
+- **Why:**
+  - **Rejected: the backend running `ctrlplane explain --json`.** It would add a second contract between the repos and fail in the container (AgentDock D-4).
+  - **Rejected: copying the explanation code into AgentDock.** It would duplicate logic, and that code is not standalone.
+  - Recording per session makes the diff part of the audit trail, not a live view of today's working tree.
+- **Cost:**
+  - A session gets a summary only while the daemon runs (as with cost, D-14).
+  - Computing it takes `git` time and some storage, so only the summary is stored.
+  - During a session the summary trails the latest turn by about 5 seconds.
+  - A shell change to a file the session never named shows as changed in the window, not as the session's own.
+  - Sessions created while the daemon was down have no starting commit, so they record `NO_BASE`.
