@@ -12,14 +12,20 @@ test("every command cli.ts dispatches is classified in CLI_COMMAND_SAFETY", () =
   );
 });
 
-test("every off-switch is caught as a command, and inside a one-liner unless its entry says matchInText: false", () => {
+test("every off-switch is caught as a command and inside a one-liner, and in prose unless its entry says matchInProse: false", () => {
   for (const [name, safety] of Object.entries(CLI_COMMAND_SAFETY)) {
     if (safety === "safe") continue;
     const command =
       "offSwitch" in safety ? (safety.offSwitch === "all" ? name : `${name} ${safety.offSwitch[0]}`) : `${name} write`;
     assert.equal(isSupervisorOffSwitch(`ctrlplane ${command}`), true, command);
-    const inText = isSupervisorOffSwitch(`node -e "require('child_process').execSync('ctrlplane ${command}')"`);
-    assert.equal(inText, safety.matchInText !== false, `${command} inside a one-liner`);
+    for (const oneLiner of [
+      `node -e "require('child_process').execSync('ctrlplane ${command}')"`,
+      `python -c "import os; os.system('ctrlplane ${command}')"`,
+    ]) {
+      assert.equal(isSupervisorOffSwitch(oneLiner), true, oneLiner);
+    }
+    const inProse = isSupervisorOffSwitch(`git commit -m "docs: explain when to run ctrlplane ${command}"`);
+    assert.equal(inProse, safety.matchInProse !== false, `${command} inside a commit message`);
   }
 });
 

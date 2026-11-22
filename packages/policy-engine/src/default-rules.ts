@@ -58,13 +58,14 @@ const HOOK_CONFIG_PATHS = [...AGENT_HOOK_CONFIG_FILES, ...AGENT_HOOK_DIRS];
 
 /**
  * Whether an agent may run a `ctrlplane` command: always (`"safe"`), never (`offSwitch: "all"`), or not
- * with some sub-commands. `matchInText: false` keeps a command out of the raw-text match, so a commit
- * message or doc that names it stays allowed; run as a command, the shell-word check still catches it.
+ * with some sub-commands. `matchInProse: false` keeps a command out of the raw-text match on prose, so a
+ * commit message or doc that names it stays allowed; run as a command, or named in the code argument of
+ * an interpreter one-liner (`node -e`, `python -c`, ...), it is still caught.
  */
 export type CommandSafety =
   | "safe"
-  | { offSwitch: "all" | readonly string[]; matchInText?: false }
-  | { safeOnly: readonly string[]; matchInText?: false };
+  | { offSwitch: "all" | readonly string[]; matchInProse?: false }
+  | { safeOnly: readonly string[]; matchInProse?: false };
 
 /**
  * Every `ctrlplane` command, with the sub-commands an agent must never run on itself: they stop, pause,
@@ -74,15 +75,15 @@ export type CommandSafety =
  * `packages/cli/tests/command-safety.test.ts` fails when `cli.ts` has a command this table does not list.
  */
 export const CLI_COMMAND_SAFETY: Readonly<Record<string, CommandSafety>> = {
-  init: { offSwitch: "all", matchInText: false },
+  init: { offSwitch: "all", matchInProse: false },
   stop: { offSwitch: "all" },
   pause: { offSwitch: "all" },
   uninstall: { offSwitch: "all" },
   policies: { offSwitch: ["disable", "off", "observe", "set"] },
   memory: { offSwitch: ["add", "rm"] },
-  spec: { offSwitch: ["approve"], matchInText: false },
+  spec: { offSwitch: ["approve"], matchInProse: false },
   supervisor: { offSwitch: ["set-key", "remove-key", "use"] },
-  handoff: { safeOnly: ["show"], matchInText: false },
+  handoff: { safeOnly: ["show"], matchInProse: false },
   resume: "safe",
   context: "safe",
   capabilities: "safe",
@@ -100,9 +101,9 @@ export const CLI_COMMAND_SAFETY: Readonly<Record<string, CommandSafety>> = {
   help: "safe",
 };
 
-function offSwitchPattern(): string {
+function offSwitchPattern(inCode: boolean): string {
   const alternatives = Object.entries(CLI_COMMAND_SAFETY).flatMap(([name, safety]) => {
-    if (safety === "safe" || safety.matchInText === false) return [];
+    if (safety === "safe" || (!inCode && safety.matchInProse === false)) return [];
     if ("offSwitch" in safety) {
       return [safety.offSwitch === "all" ? name : String.raw`${name}\s+(?:${safety.offSwitch.join("|")})`];
     }
@@ -112,12 +113,33 @@ function offSwitchPattern(): string {
 }
 
 // Raw-text match, kept for an off-switch typed inside another program's string
-// (`node -e "execSync('ctrlplane stop')"`), where the shell parser cannot see the words.
-const OFF_SWITCH_VERBS = offSwitchPattern();
-const SUPERVISOR_OFF_SWITCH = new RegExp(
-  String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${OFF_SWITCH_VERBS}|\bbin\.ts["']?\s+${OFF_SWITCH_VERBS}`,
-  "i",
-);
+// (`node -e "execSync('ctrlplane stop')"`), where the shell parser cannot see the words; the code
+// argument of an interpreter one-liner also gets the `matchInProse: false` commands.
+function offSwitchRegExp(inCode: boolean): RegExp {
+  const verbs = offSwitchPattern(inCode);
+  return new RegExp(String.raw`\bctrlplane(?:\.cmd|\.ps1)?\s+${verbs}|\bbin\.ts["']?\s+${verbs}`, "i");
+}
+const SUPERVISOR_OFF_SWITCH = offSwitchRegExp(false);
+const SUPERVISOR_OFF_SWITCH_IN_CODE = offSwitchRegExp(true);
+
+// The option that starts the code argument, per interpreter; shells, `eval` and PowerShell `-Command`
+// are absent because `shell.ts` already splits their scripts into commands that are checked as words.
+const INTERPRETER_CODE_FLAGS: readonly (readonly [RegExp, RegExp])[] = [
+  [/^(?:node|nodejs|bun|tsx)$/, /^(?:-[ep]+|--eval|--print)(?:=|$)/],
+  [/^(?:python[\d.]*|py|pypy[\d.]*)$/, /^-[a-zA-Z]*c/],
+  [/^perl$/, /^-[a-zA-Z]*[eE]/],
+  [/^ruby$/, /^-[a-zA-Z]*e/],
+  [/^php$/, /^-[a-zA-Z]*r/],
+  [/^deno$/, /^eval$/],
+];
+
+/** The words of an interpreter one-liner from its code option on (`node -e <code>`); null for any other command. */
+function interpreterCode(words: string[]): string | null {
+  const entry = INTERPRETER_CODE_FLAGS.find(([program]) => program.test(words[0] ?? ""));
+  if (!entry) return null;
+  const at = words.findIndex((w, i) => i > 0 && entry[1].test(w));
+  return at === -1 ? null : words.slice(at).join(" ");
+}
 
 /** True when `words` (the command after `ctrlplane`, options removed) is an off-switch in CLI_COMMAND_SAFETY. */
 function isOffSwitch(words: string[]): boolean {
@@ -141,6 +163,8 @@ const CLI_SCRIPT = /(?:^|[\\/])bin\.[jt]s$/i;
 export function isSupervisorOffSwitch(sub: string): boolean {
   if (SUPERVISOR_OFF_SWITCH.test(sub)) return true;
   for (const words of argvVariants(sub)) {
+    const code = interpreterCode(words);
+    if (code !== null && SUPERVISOR_OFF_SWITCH_IN_CODE.test(code)) return true;
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
       const isCli =

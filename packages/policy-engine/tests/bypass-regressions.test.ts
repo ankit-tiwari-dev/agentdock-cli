@@ -91,6 +91,45 @@ test("regression: supervisor off-switches are caught after shell unquoting", () 
   );
 });
 
+test("regression: init, spec approve and handoff are caught inside interpreter one-liners, not in prose", () => {
+  const engine = new PolicyEngine();
+  expectDecision(
+    engine,
+    [
+      `node -e "require('child_process').execSync('ctrlplane init')"`,
+      `node --eval "require('child_process').execSync('ctrlplane spec approve')"`,
+      `node -p "require('child_process').execSync('ctrlplane handoff write')"`,
+      `python -c "import os; os.system('ctrlplane spec approve')"`,
+      `python3 -c "import os; os.system('ctrlplane init')"`,
+      `py -3 -c "import subprocess; subprocess.run(['ctrlplane init'], shell=True)"`,
+      `perl -e "system('ctrlplane init')"`,
+      `perl -le "system('ctrlplane handoff')"`,
+      `ruby -e "system('ctrlplane spec approve')"`,
+      `php -r "system('ctrlplane init');"`,
+      `deno eval "new Deno.Command('sh', { args: ['-c', 'ctrlplane init'] }).outputSync()"`,
+      `bun -e "Bun.spawnSync(['sh', '-c', 'ctrlplane init'])"`,
+      `bash -c "node -e \\"require('child_process').execSync('ctrlplane init')\\""`,
+      `eval "python -c \\"import os; os.system('ctrlplane init')\\""`,
+      `pwsh -Command "node -e 'require(\\"child_process\\").execSync(\\"ctrlplane init\\")'"`,
+      `cmd /c node -e "require('child_process').execSync('ctrlplane init')"`,
+      `sh -c 'ctrlplane init'`,
+    ],
+    "DENY",
+    "RULE-BLOCK-AGENT-SELF-TAMPER",
+  );
+  expectDecision(
+    engine,
+    [
+      `git commit -m "docs: explain when to run ctrlplane init"`,
+      `echo "run ctrlplane init later"`,
+      `node -e "console.log('ctrlplane status')"`,
+      `python -c "print('ctrlplane spec show')"`,
+      `node build.js "ctrlplane init"`,
+    ],
+    "ALLOW",
+  );
+});
+
 test("regression: agents cannot re-run init, write a handoff or approve their own spec", () => {
   const engine = new PolicyEngine();
   expectDecision(
