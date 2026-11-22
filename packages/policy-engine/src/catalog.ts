@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import type { PolicyRule, RuleContext } from "../../core/src/index.ts";
 import { DEFAULT_SAFETY_RULES, createSafetyRules, deepFreeze, type SafetyRuleOptions } from "./default-rules.ts";
-import { argv, gitSubcommand } from "./command-checks.ts";
+import { argv, gitSubcommand, runsDecodedText } from "./command-checks.ts";
 import { matchesAnyGlob } from "./glob.ts";
 import { splitShellSegments } from "./shell.ts";
 
@@ -174,6 +174,28 @@ export const EXTENDED_RULES: readonly PolicyRule[] = deepFreeze([
         };
       }
       return null;
+    },
+  },
+  {
+    id: "RULE-ASK-RUN-DECODED-TEXT",
+    name: "Ask before running decoded text as code",
+    description:
+      "Text decoded or unscrambled on the fly (`base64 -d`, `xxd -r`, `openssl -d`, `rev`, `tr`, `printf '\\x..'`) and run by a shell, interpreter or `eval` hides what it does from every other rule.",
+    event: "PreToolUse",
+    category: "integrity",
+    // Always on because an encoded payload is how an agent would hide an off-switch from the self-tamper rule.
+    alwaysOn: true,
+    targetTools: ["Bash"],
+    action: "REQUIRE_MANUAL_APPROVAL",
+    message:
+      "Security Policy: this runs text that is decoded at run time, so no rule can see what it does. Decode it to a file, show the plain text, then run that.",
+    check: (ctx) => {
+      const sub = runsDecodedText(ctx.command ?? "");
+      return sub
+        ? {
+            message: `Security Policy: running decoded text as code hides what it does from supervision; the developer must approve it. (Triggered by command: '${sub}')`,
+          }
+        : null;
     },
   },
   {

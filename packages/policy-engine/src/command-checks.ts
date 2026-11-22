@@ -1,6 +1,15 @@
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, posix, resolve } from "node:path";
-import { commandVariants, isDynamicWord, peelCommand, stripCommandPrefix, tokenize } from "./shell.ts";
+import {
+  commandVariants,
+  isDynamicWord,
+  peelCommand,
+  splitShellSegments,
+  stripCommandPrefix,
+  substitutionBodies,
+  tokenize,
+  type ParsedCommand,
+} from "./shell.ts";
 import { normalizeFsPath, toProjectPath, trimTrailing } from "./glob.ts";
 import { isSensitiveFile } from "../../git-analyzer/src/index.ts";
 import { ctrlplaneHome as userStateDir } from "../../core/src/index.ts";
@@ -590,4 +599,92 @@ export function cwdPerSubCommand(subCommands: string[]): string[] {
     }
     return here;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Decoded text run as code
+
+const CODE_SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "mksh", "fish"]);
+const INTERPRETERS = /^(?:node|nodejs|deno|bun|perl|ruby|php|pwsh|powershell|python[\d.]*)$/;
+const CHAR_ESCAPE = /\\(?:x[0-9a-fA-F]|u[0-9a-fA-F]|[0-7])/;
+const CHAR_RANGE = /[a-zA-Z0-9]-[a-zA-Z0-9]|\[:\w+:\]/;
+
+/** A pipeline stage that turns encoded or scrambled text back into readable text. */
+function isDecoder(stage: string): boolean {
+  return argvVariants(stage).some(([prog = "", ...rest]) => {
+    switch (prog) {
+      case "base64":
+      case "base32":
+      case "basenc":
+      case "gbase64":
+        return rest.some((a) => a === "--decode" || /^-[a-zA-Z]*[dD][a-zA-Z]*$/.test(a));
+      case "xxd":
+        return rest.some((a) => /^-(?:r|revert|rp|pr)$/.test(a));
+      case "openssl":
+        return rest.some((a) => a === "-d" || a === "-decrypt");
+      case "uudecode":
+      case "rev":
+        return true;
+      case "tr": {
+        const sets = rest.filter((a) => !a.startsWith("-"));
+        return sets.length >= 2 && CHAR_RANGE.test(sets[0]) && CHAR_RANGE.test(sets[1]);
+      }
+      case "printf":
+      case "echo":
+        return rest.some((a) => CHAR_ESCAPE.test(a));
+      default:
+        return false;
+    }
+  });
+}
+
+/** Whether a word's `$(...)`, backtick or `<(...)` output comes from a decoder. */
+function holdsDecodedOutput(word: string): boolean {
+  return substitutionBodies(word).some((body) => splitShellSegments(body).some((s) => isDecoder(s.text)));
+}
+
+/**
+ * The words a shell, interpreter or `eval` runs as code (script, `-c`/`-e` text, here-string), and
+ * whether it reads its code from stdin instead; null for any other program.
+ */
+function codeInput(parsed: ParsedCommand): { words: string[]; stdin: boolean } | null {
+  const { args } = peelCommand(parsed.args);
+  const prog = args[0] ?? "";
+  if (prog === "eval" || prog === "source" || prog === ".") return { words: args.slice(1), stdin: false };
+  const shell = CODE_SHELLS.has(prog);
+  if (!shell && !INTERPRETERS.test(prog)) return null;
+  const words = parsed.redirects.filter((r) => r.op === "<<<" || r.op === "<").map((r) => r.target);
+  const codeFlag = shell ? /^-[a-zA-Z]*c[a-zA-Z]*$/ : /^(?:-[a-zA-Z]{0,2}[ecpm]|--?(?:eval|print|command))$/i;
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i];
+    if (a === "-") break;
+    if (codeFlag.test(a)) return { words: [...words, ...args.slice(i + 1, i + 2)], stdin: false };
+    if (shell && /^[-+]o$/i.test(a)) {
+      i++;
+      continue;
+    }
+    if (a.startsWith("-")) continue;
+    return { words: [...words, a], stdin: false };
+  }
+  return { words, stdin: words.length === 0 };
+}
+
+/**
+ * The simple command that runs decoded or unscrambled text as code (`echo … | base64 -d | sh`,
+ * `eval "$(… | xxd -r -p)"`, `$(… | rev)`), or null. Plain `echo … | sh` and `cat x | bash` are not
+ * decoding, so they are left to the rules that read the literal text.
+ */
+export function runsDecodedText(command: string): string | null {
+  for (const seg of splitShellSegments(command)) {
+    for (const parsed of commandVariants(seg.text)) {
+      const peeled = peelCommand(parsed.args).args;
+      const first = parsed.args[parsed.args.length - peeled.length] ?? "";
+      if (isDynamicWord(first) && holdsDecodedOutput(first)) return seg.text;
+      const code = codeInput(parsed);
+      if (!code) continue;
+      if (code.stdin && seg.pipedFrom.some(isDecoder)) return seg.text;
+      if (code.words.some(holdsDecodedOutput)) return seg.text;
+    }
+  }
+  return null;
 }
