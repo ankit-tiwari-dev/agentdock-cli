@@ -28,6 +28,10 @@ _Avoid_: orchestration, execution, control plane, sandbox, security boundary
 The short background a new session starts with: the approved spec, recent intents, session summaries, handoff notes and project memory. It is information, never instructions.
 _Avoid_: system prompt, instructions, memory dump
 
+**Session summary**:
+A short account of what a session did, built only from its audit trail.
+_Avoid_: recap, AI summary
+
 **Handoff note**:
 A note left for the next session about where the work stands.
 _Avoid_: summary, todo

@@ -227,6 +227,21 @@ One entry per decision: what we chose, why, and what we gave up. Append new entr
 - **Cost:**
   - About two weeks of provider work is retired.
   - Developers lose a plain-language review inside the dashboard.
-  - **Not decided yet:**
-    - D-5's opt-in AI session summaries still run the local `claude -p`, which conflicts with "AgentDock calls no model";
-    - how the deterministic summary reaches the dashboard. The backend may not import CLI code (AgentDock D-10, its architecture rules), and the blast-radius code is not a standalone file that can be copied.
+  - D-5's opt-in AI session summaries also called a model; D-22 removes them.
+  - **Not decided yet:** how the deterministic summary reaches the dashboard. The backend may not import CLI code (AgentDock D-10, its architecture rules), and the blast-radius code is not a standalone file that can be copied.
+
+## D-22 · Session summaries are deterministic only, and the nested-run bypass goes; supersedes D-5
+
+- **Decision:**
+  - Session summaries come only from the audit trail: the tools a session ran, what was denied or asked, files touched and how calls ended. Every line is neutralised (`inertLine`) so it cannot read as an instruction.
+  - **Removed:** the opt-in `aiSummaries` setting, the `claude -p` summary run, and their tests.
+  - **Removed with them:** `CTRLPLANE_NESTED`. The summary run was its only producer and the hook's early return its only consumer.
+  - AgentDock now has no path, direct or through a subprocess, that calls a model (D-21).
+  - This supersedes D-5.
+- **Why:**
+  - A model-written summary is the part of the context pack hardest to keep inert, and it enters the next session (D-6).
+  - Deterministic summaries match "local and deterministic" (D-21).
+  - `CTRLPLANE_NESTED=1` made the hook return at once for any process that set it. That bypass has no purpose once no summary run exists.
+- **Cost:**
+  - Summaries say what happened, not why; handoff notes carry the why.
+  - A config that still sets `context.aiSummaries` needs a defined behaviour; the removal issue proposes ignoring it with a warning.
