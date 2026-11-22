@@ -19,6 +19,8 @@ export interface DaemonLock {
   ipcTarget: string;
   startedAt?: number;
   version?: string;
+  /** Per-start secret a shutdown frame must carry; locks from older daemons have none. */
+  token?: string;
 }
 
 /**
@@ -30,7 +32,13 @@ export const DAEMON_UNAVAILABLE = "daemon-unavailable";
 export function isDaemonLock(value: unknown): value is DaemonLock {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  return Number.isInteger(v.pid) && (v.pid as number) > 0 && typeof v.ipcTarget === "string" && v.ipcTarget !== "";
+  return (
+    Number.isInteger(v.pid) &&
+    (v.pid as number) > 0 &&
+    typeof v.ipcTarget === "string" &&
+    v.ipcTarget !== "" &&
+    (v.token === undefined || typeof v.token === "string")
+  );
 }
 
 export function isProcessAlive(pid: number): boolean {

@@ -2,12 +2,14 @@ import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync, statSyn
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { performance } from "node:perf_hooks";
 import {
   detectToolFailure,
   type AgentHookPayload,
   type AgentType,
+  type DaemonControlFrame,
   type DaemonStatus,
   type EventType,
   type HookVerdictResponse,
@@ -85,6 +87,8 @@ export class SupervisorDaemon {
   private lockFilePath: string;
   private dbPath: string;
   private shutdownRequested: (() => void) | null = null;
+  /** Lives only in the lock under `.ctrlplane/`, so a shutdown frame must come from someone who read it. */
+  private controlToken = randomBytes(32).toString("hex");
   private projectEngine: ProjectEngine | null;
   private reloading = false;
   private recorderOptions: RecorderOptions;
@@ -118,7 +122,10 @@ export class SupervisorDaemon {
 
     this.lockFilePath = daemonLockPath(this.projectRoot);
 
-    this.ipcServer = new IPCServer((payload) => this.handleHookPayload(payload), config.ipcPathOrPort);
+    this.ipcServer = new IPCServer(
+      (frame) => (isControlFrame(frame) ? this.handleControlFrame(frame) : this.handleHookPayload(frame)),
+      config.ipcPathOrPort,
+    );
   }
 
   /** Picks up edited policies.json files without a restart; the old rules serve until the new ones load. */
@@ -190,6 +197,7 @@ export class SupervisorDaemon {
       ipcTarget,
       startedAt: this.startTime,
       version: DAEMON_VERSION,
+      token: this.controlToken,
     };
     writeFileSync(this.lockFilePath, JSON.stringify(lockData, null, 2));
 
@@ -268,16 +276,20 @@ export class SupervisorDaemon {
     return n;
   }
 
-  public handleHookPayload(payload: AgentHookPayload): HookVerdictResponse {
-    const startTime = performance.now();
-
-    if (payload.control === "shutdown") {
+  /** Ping answers anyone; shutdown needs this start's token, because any local process can reach the socket. */
+  public handleControlFrame(frame: DaemonControlFrame): HookVerdictResponse {
+    if (frame.control === "ping") {
+      return { decision: "ALLOW", exitCode: 0, stdoutMessage: DAEMON_VERSION, latencyMs: 0 };
+    }
+    if (frame.control === "shutdown" && tokenMatches(frame.token, this.controlToken)) {
       setImmediate(() => this.shutdownRequested?.());
       return { decision: "ALLOW", exitCode: 0, stdoutMessage: "shutting down", latencyMs: 0 };
     }
-    if (payload.control === "ping") {
-      return { decision: "ALLOW", exitCode: 0, stdoutMessage: DAEMON_VERSION, latencyMs: 0 };
-    }
+    return { decision: "DENY", exitCode: 2, stderrMessage: "control frame refused", latencyMs: 0 };
+  }
+
+  public handleHookPayload(payload: AgentHookPayload): HookVerdictResponse {
+    const startTime = performance.now();
 
     this.reloadIfConfigChanged();
     const sessionId = payload.sessionId ?? DEFAULT_SESSION;
@@ -361,6 +373,19 @@ export class SupervisorDaemon {
       latencyMs: performance.now() - startTime,
     };
   }
+}
+
+/** Only `sendDaemonControl` sets `kind`; a hook payload never carries it. */
+function isControlFrame(frame: AgentHookPayload | DaemonControlFrame): frame is DaemonControlFrame {
+  return (frame as { kind?: unknown }).kind === "control";
+}
+
+function tokenMatches(given: unknown, expected: string): boolean {
+  if (typeof given !== "string") return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  // timingSafeEqual throws on unequal lengths, and a plain compare would leak how much of the token matched.
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 const execFileAsync = promisify(execFile);

@@ -115,7 +115,8 @@ export async function handleStopDaemon(projectPath = process.cwd()): Promise<Com
   }
   const existing = running.lock;
 
-  await sendDaemonControl(existing.ipcTarget, "shutdown");
+  // A lock without a token is from an older daemon that cannot check one; the PID kill below stops it.
+  if (existing.token) await sendDaemonControl(existing.ipcTarget, "shutdown", 1500, existing.token);
   for (let i = 0; i < 30 && isProcessAlive(existing.pid); i++) await sleep(100);
 
   // Only reached for a PID that answered as our daemon a moment ago.
