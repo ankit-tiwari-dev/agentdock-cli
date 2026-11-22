@@ -108,6 +108,22 @@ test("flags a loosened minimum and a raised maximum in CONSTRAINTS.md, and stays
   assert.deepEqual(rules(tightened), []);
 });
 
+test("regression: rewriting an explanation bullet is not a removed rule, but a floor rule turned bold still is", () => {
+  // The "Pages, measured and held." paragraph was reported as a removed rule after its first colon moved.
+  const explanation = fileDiff(
+    "CONSTRAINTS.md",
+    ["- **Pages, measured and held.** On 2026-11-22 the worst page measured CLS 0.094: tightened."],
+    ["- **Pages, measured and held.** On 2026-11-21 (Windows) the worst page measured CLS 0.182: held."],
+  );
+  assert.deepEqual(rules(explanation), []);
+  const boldedRule = fileDiff(
+    "CONSTRAINTS.md",
+    ["- **No new suppression comments**"],
+    ["- No new suppression comments: x"],
+  );
+  assert.deepEqual(rules(boldedRule), ["rule-removed"]);
+});
+
 test("flags a removed rule and a new exception, but not a removed exception", () => {
   assert.deepEqual(rules(fileDiff("CONSTRAINTS.md", [], ["- No secrets in source: gitleaks"])), ["rule-removed"]);
   assert.deepEqual(rules(fileDiff("CONSTRAINTS.md", ["| W9 | arch | x | y | @dev | 2027-01-01 |"])), ["new-exception"]);
