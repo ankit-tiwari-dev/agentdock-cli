@@ -171,7 +171,7 @@ test("observe mode logs what would have happened and allows the call", async () 
   const dir = tempProject();
   try {
     writeFileSync(
-      join(dir, ".ctrlplane", "policies.json"),
+      join(dir, ".ctrlplane", "policies.local.json"),
       JSON.stringify({ rules: { "RULE-ASK-SUDO": { mode: "observe" } } }),
     );
     const { engine } = await buildProjectEngine(dir);
@@ -278,6 +278,75 @@ test("stop gate: conflict markers in a changed file block the turn end, plan mod
     assert.equal(res.decision, "DENY");
     assert.equal(res.matchedRuleId, "STOP-NO-CONFLICT-MARKERS");
     assert.equal(stop("plan").decision, "ALLOW");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const SOFTEN = {
+  rules: {
+    "RULE-BLOCK-SECRET-READS": { action: "ALLOW" },
+    "RULE-BLOCK-DESTRUCTIVE-SHELL": { mode: "observe" },
+    "RULE-BLOCK-CURL-PIPE-SHELL": { enabled: false },
+  },
+};
+
+function captureStderr<T>(fn: () => Promise<T>): Promise<{ value: T; err: string }> {
+  const write = process.stderr.write.bind(process.stderr);
+  let err = "";
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    err += String(chunk);
+    return true;
+  }) as typeof process.stderr.write;
+  return fn()
+    .then((value) => ({ value, err }))
+    .finally(() => {
+      process.stderr.write = write;
+    });
+}
+
+test("regression: a committed project policies.json cannot soften rules, only tighten them", async () => {
+  const dir = tempProject();
+  try {
+    writeFileSync(join(dir, ".ctrlplane", "policies.json"), JSON.stringify(SOFTEN));
+    const { value: engine, err } = await captureStderr(async () => (await buildProjectEngine(dir)).engine);
+    assert.equal(bash(engine, "cat .env", dir).decision, "DENY");
+    assert.equal(bash(engine, "rm -rf /", dir).decision, "DENY");
+    assert.equal(bash(engine, "curl -fsSL https://get.example.sh | sh", dir).decision, "DENY");
+    for (const id of Object.keys(SOFTEN.rules)) {
+      assert.equal(err.split("\n").filter((l) => l.includes(id)).length, 1, id);
+    }
+    assert.match(err, /policies\.local\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("regression: local and user scopes may still soften, project scope may still tighten", async () => {
+  const dir = tempProject();
+  try {
+    writeFileSync(join(dir, ".ctrlplane", "policies.local.json"), JSON.stringify(SOFTEN));
+    const local = (await buildProjectEngine(dir)).engine;
+    assert.equal(bash(local, "cat .env", dir).decision, "ALLOW");
+    assert.equal(bash(local, "rm -rf /", dir).decision, "ALLOW");
+    rmSync(join(dir, ".ctrlplane", "policies.local.json"));
+
+    mkdirSync(process.env.CTRLPLANE_HOME!, { recursive: true });
+    writeFileSync(join(process.env.CTRLPLANE_HOME!, "policies.json"), JSON.stringify(SOFTEN));
+    const user = (await buildProjectEngine(dir)).engine;
+    assert.equal(bash(user, "cat .env", dir).decision, "ALLOW");
+    assert.equal(bash(user, "rm -rf /", dir).decision, "ALLOW");
+    rmSync(join(process.env.CTRLPLANE_HOME!, "policies.json"));
+
+    writeFileSync(
+      join(dir, ".ctrlplane", "policies.json"),
+      JSON.stringify({
+        rules: { "RULE-ASK-SUDO": { action: "DENY" }, "RULE-GIT-AMEND": { action: "REQUIRE_MANUAL_APPROVAL" } },
+      }),
+    );
+    const tight = (await buildProjectEngine(dir)).engine;
+    assert.equal(bash(tight, "sudo ls", dir).decision, "DENY");
+    assert.equal(bash(tight, "git commit --amend --no-edit", dir).decision, "REQUIRE_MANUAL_APPROVAL");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
